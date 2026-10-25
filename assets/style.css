@@ -60,6 +60,7 @@ a { color: var(--focus); }
 .owner { margin: 12px 0 0; font-weight: 600; }
 .owner a { color: #111; text-decoration-thickness: 2px; }
 .sub { margin: 8px 0 0; font-size: 16px; max-width: 36em; }
+.test-mode { display: inline-block; margin: 12px 0 0; padding: 6px 10px; background: #111; color: var(--yellow); border-radius: 8px; font-weight: 700; font-size: 15px; }
 
 main { padding: 0 16px; max-width: 560px; margin: 0 auto; }
 
@@ -131,12 +132,12 @@ input:focus, select:focus, textarea:focus { outline: 3px solid var(--focus); out
 /* ---- photos ---- */
 .thumbs { list-style: none; margin: 0 0 12px; padding: 0; display: flex; gap: 12px; flex-wrap: wrap; }
 .thumbs:empty { margin: 0; }
-.thumbs li { position: relative; width: 120px; height: 86px; border-radius: 10px; overflow: hidden; border: 2px solid var(--line-soft); background: #000; }
+.thumbs li { position: relative; width: 140px; height: 100px; border-radius: 10px; overflow: hidden; border: 2px solid var(--line-soft); background: #000; }
 .thumbs img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .thumbs button {
-  position: absolute; top: 4px; right: 4px; width: 36px; height: 36px;
-  border-radius: 50%; border: 0; background: rgba(0, 0, 0, 0.78); color: #fff;
-  font-size: 20px; line-height: 1; cursor: pointer;
+  position: absolute; top: 2px; right: 2px; width: var(--tap); height: var(--tap);
+  border-radius: 50%; border: 0; background: rgba(0, 0, 0, 0.72); color: #fff;
+  font-size: 22px; line-height: 1; cursor: pointer;
 }
 
 /* ---- honeypot and screen-reader-only ---- */

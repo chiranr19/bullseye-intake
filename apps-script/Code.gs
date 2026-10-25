@@ -55,33 +55,41 @@ function setup() {
   var sheet = getOrCreateSheet_(ss);
   var lastCol = HEADERS.length;
 
-  // Header row
+  // Header row (a new sheet has 26 columns; we need 27). Extra empty columns are trimmed, but a
+  // column Russell added and filled is never touched.
+  if (sheet.getMaxColumns() < lastCol) sheet.insertColumnsAfter(sheet.getMaxColumns(), lastCol - sheet.getMaxColumns());
   sheet.getRange(1, 1, 1, lastCol).setValues([HEADERS]).setFontWeight('bold').setBackground('#FFD400').setWrap(true);
   sheet.setFrozenRows(1);
-  if (sheet.getMaxColumns() > lastCol) sheet.deleteColumns(lastCol + 1, sheet.getMaxColumns() - lastCol);
+  if (sheet.getMaxColumns() > lastCol && sheet.getLastColumn() <= lastCol) {
+    sheet.deleteColumns(lastCol + 1, sheet.getMaxColumns() - lastCol);
+  }
   HEADERS.forEach(function (h, i) { sheet.setColumnWidth(i + 1, COLUMN_WIDTHS[h] || 110); });
 
   // Formats: Submitted is a real datetime; every column we write is plain text so phone numbers,
-  // ZIPs with leading zeros and long policy numbers are stored exactly as typed.
+  // ZIPs with leading zeros and long policy numbers are stored exactly as typed. Open-ended ranges
+  // so row 1001+ behaves the same.
+  var lastWrittenLetter = columnLetter_(FIRST_MANUAL_COLUMN - 1);
   sheet.getRange('A2:A').setNumberFormat('mmm d, yyyy h:mm am/pm');
-  sheet.getRange(2, 2, sheet.getMaxRows() - 1, FIRST_MANUAL_COLUMN - 2).setNumberFormat('@');
+  sheet.getRange('B2:' + lastWrittenLetter).setNumberFormat('@');
 
   // Status dropdown
   var statusCol = HEADERS.indexOf('Status') + 1;
-  var statusRange = sheet.getRange(2, statusCol, sheet.getMaxRows() - 1, 1);
-  statusRange.setDataValidation(
+  var colLetter = columnLetter_(statusCol);
+  sheet.getRange(colLetter + '2:' + colLetter).setDataValidation(
     SpreadsheetApp.newDataValidation().requireValueInList(STATUSES, true).setAllowInvalid(false).build()
   );
 
-  // Row colors: New = light yellow, Paid = light green
-  var colLetter = columnLetter_(statusCol);
-  var dataRange = sheet.getRange(2, 1, sheet.getMaxRows() - 1, lastCol);
-  sheet.setConditionalFormatRules([
-    SpreadsheetApp.newConditionalFormatRule().whenFormulaSatisfied('=$' + colLetter + '2="New"')
-      .setBackground('#FFF8C5').setRanges([dataRange]).build(),
-    SpreadsheetApp.newConditionalFormatRule().whenFormulaSatisfied('=$' + colLetter + '2="Paid"')
-      .setBackground('#D9F2DC').setRanges([dataRange]).build()
-  ]);
+  // Row colors: New = light yellow, Paid = light green. Set once; if any rules exist (ours or
+  // Russell's own), leave them alone.
+  if (sheet.getConditionalFormatRules().length === 0) {
+    var dataRange = sheet.getRange('A2:' + columnLetter_(lastCol));
+    sheet.setConditionalFormatRules([
+      SpreadsheetApp.newConditionalFormatRule().whenFormulaSatisfied('=$' + colLetter + '2="New"')
+        .setBackground('#FFF8C5').setRanges([dataRange]).build(),
+      SpreadsheetApp.newConditionalFormatRule().whenFormulaSatisfied('=$' + colLetter + '2="Paid"')
+        .setBackground('#D9F2DC').setRanges([dataRange]).build()
+    ]);
+  }
 
   // Drive folder
   var props = PropertiesService.getScriptProperties();
@@ -105,31 +113,32 @@ function doGet() {
 }
 
 function doPost(e) {
-  var lock = null;
   try {
-    var payload = parsePayload_(e);
+    var payload = parsePayload_(e);            // text fields only; cheap
     var props = PropertiesService.getScriptProperties();
-    checkSpam_(payload, props);
-
-    lock = LockService.getScriptLock();
-    lock.waitLock(10000);
+    checkSpam_(payload, props);                // bots are turned away before any base64 work
+    decodeFiles_(payload);
 
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     var sheet = ss.getSheetByName(SHEET_NAME);
     if (!sheet) throw new Error('Sheet tab "' + SHEET_NAME + '" not found — run setup() first');
 
-    var id = makeId_(sheet);
-    var folder = makeSubmissionFolder_(props, id, payload.name);
-    var files = saveFiles_(folder, payload);
-    sheet.appendRow(buildRow_(id, payload, files, folder));
+    // Only id + folder + row need to be serialized; the email does not, so the lock is released first.
+    var saved = withLock_(function () {
+      var id = makeId_(sheet);
+      var folder = makeSubmissionFolder_(props, id, payload.name);
+      var files = saveFiles_(folder, payload, id);
+      sheet.appendRow(buildRow_(id, payload, files, folder));
+      return { id: id, folder: folder, files: files };
+    });
 
     try {
-      notify_(props, ss, id, payload, files, folder);
+      notify_(props, ss, saved.id, payload, saved.files, saved.folder);
     } catch (mailErr) {
       // The row and files are saved; a mail problem must not fail the customer.
-      console.error('notify_ failed for ' + id + ': ' + (mailErr && mailErr.stack || mailErr));
+      console.error('notify_ failed for ' + saved.id + ': ' + (mailErr && mailErr.stack || mailErr));
     }
-    return json_({ ok: true, id: id });
+    return json_({ ok: true, id: saved.id });
   } catch (err) {
     if (err && err.rejection) {
       console.warn('Rejected submission: ' + err.message);
@@ -137,8 +146,16 @@ function doPost(e) {
     }
     console.error('doPost failed: ' + (err && err.stack || err));
     return json_({ ok: false, error: USER_ERROR });
+  }
+}
+
+function withLock_(fn) {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    return fn();
   } finally {
-    if (lock) { try { lock.releaseLock(); } catch (ignore) { /* already released */ } }
+    lock.releaseLock();
   }
 }
 
@@ -155,9 +172,11 @@ function parsePayload_(e) {
   if (!data || typeof data !== 'object' || Array.isArray(data)) throw rejection_('body is not an object');
 
   var p = {};
-  Object.keys(TEXT_LIMITS).forEach(function (k) { p[k] = cleanText_(data[k], TEXT_LIMITS[k]); });
+  Object.keys(TEXT_LIMITS).forEach(function (k) { p[k] = cleanText_(data[k], TEXT_LIMITS[k], k === 'notes'); });
   p.secret = typeof data.secret === 'string' ? data.secret : '';
   p.website = data.website === undefined || data.website === null ? '' : String(data.website);
+  p.rawPhotos = data.photos;          // decoded later by decodeFiles_, after the spam checks
+  p.rawSignature = data.signature;
 
   p.phone = p.phone.replace(/\D/g, '');
   if (p.phone.length === 11 && p.phone.charAt(0) === '1') p.phone = p.phone.slice(1);
@@ -169,18 +188,24 @@ function parsePayload_(e) {
 
   if (!p.name) throw rejection_('name missing', 'Add your name');
   if (p.phone.length !== 10) throw rejection_('phone invalid', 'Add your mobile number');
-
-  p.photos = cleanFiles_(data.photos, MAX_PHOTOS, MAX_PHOTO_BYTES, 'card');
-  var sig = cleanFiles_(data.signature ? [data.signature] : [], 1, MAX_SIGNATURE_BYTES, 'signature');
-  if (!sig.length) throw rejection_('signature missing', 'Please sign above');
-  p.signature = sig[0];
   return p;
 }
 
-function cleanText_(v, max) {
+function decodeFiles_(p) {
+  p.photos = cleanFiles_(p.rawPhotos, MAX_PHOTOS, MAX_PHOTO_BYTES, 'card');
+  var sig = cleanFiles_(p.rawSignature ? [p.rawSignature] : [], 1, MAX_SIGNATURE_BYTES, 'signature');
+  if (!sig.length) throw rejection_('signature missing', 'Please sign above');
+  p.signature = sig[0];
+  delete p.rawPhotos;
+  delete p.rawSignature;
+}
+
+function cleanText_(v, max, multiline) {
   if (typeof v !== 'string') return '';
-  // Drop control characters except tab and newline, then trim and cap.
-  return v.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '').trim().slice(0, max);
+  // Drop control characters; keep tab/newline only where several lines make sense (notes).
+  var s = v.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '');
+  if (!multiline) s = s.replace(/[\r\n\t]+/g, ' ');
+  return s.trim().slice(0, max);
 }
 
 function cleanFiles_(list, maxCount, maxBytes, kind) {
@@ -258,9 +283,7 @@ function getOrCreateRootFolder_(props) {
 
 // Bullseye Intake / 2026 / BW-20261025-7K3Q – Jane Doe
 function makeSubmissionFolder_(props, id, name) {
-  var rootId = props.getProperty('ROOT_FOLDER_ID');
-  if (!rootId) throw new Error('ROOT_FOLDER_ID is not set — run setup() first');
-  var root = DriveApp.getFolderById(rootId);
+  var root = getOrCreateRootFolder_(props);   // self-heals if the root folder was trashed or deleted
   var year = Utilities.formatDate(new Date(), TZ, 'yyyy');
   var yearFolder = childFolder_(root, year);
   var safeName = name.replace(/[\/\\:*?"<>|\u0000-\u001F]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 60);
@@ -276,7 +299,7 @@ function childFolder_(parent, name) {
   return parent.createFolder(name);
 }
 
-function saveFiles_(folder, p) {
+function saveFiles_(folder, p, id) {
   var photoBlobs = [];
   var photoUrls = [];
   p.photos.forEach(function (ph) {
@@ -286,6 +309,21 @@ function saveFiles_(folder, p) {
   });
   var sigBlob = Utilities.newBlob(p.signature.bytes, p.signature.type, 'signature.' + ALLOWED_IMAGE_TYPES[p.signature.type]);
   var signatureUrl = folder.createFile(sigBlob).getUrl();
+
+  // The audit trail for the signed authorization lives next to the signature, not only in an email.
+  var details = [
+    'Reference: ' + id,
+    'Name: ' + p.name,
+    'Signed at: ' + p.signed_at,
+    'Terms version: ' + p.auth_text_version,
+    'Page loaded at: ' + p.loaded_at,
+    'Submitted at: ' + p.submitted_at,
+    'Source: ' + p.ref,
+    'VIN source: ' + p.vin_source,
+    'Device: ' + p.user_agent
+  ].join('\n') + '\n';
+  folder.createFile('details.txt', details, MimeType.PLAIN_TEXT);
+
   return { photoBlobs: photoBlobs, photoUrls: photoUrls, signatureUrl: signatureUrl };
 }
 
@@ -365,7 +403,7 @@ function notify_(props, ss, id, p, files, folder) {
     ['Car will be at', repairLocationText_(p)],
     ['Notes', p.notes],
     ['Card photos', files.photoUrls.length ? files.photoUrls.length + ' attached, also in the folder' : 'none — get the card at the car'],
-    ['Signed', (p.signed_at || '') + (p.auth_text_version ? ' · terms ' + p.auth_text_version : '')],
+    ['Signed', [p.signed_at, p.auth_text_version ? 'terms ' + p.auth_text_version : ''].filter(Boolean).join(' · ')],
     ['Source', p.ref]
   ];
 

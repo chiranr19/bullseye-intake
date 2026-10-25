@@ -43,7 +43,8 @@ Click **Save script properties**. `ROOT_FOLDER_ID` is written automatically by t
 4. Check the Sheet tab: a tab named **Customers** with a bold yellow header row, frozen.
    Check Drive: a folder **Bullseye Intake** exists.
 
-`setup()` is safe to run again any time.
+`setup()` is safe to run again any time: it never deletes a column that has data, and it sets the
+row colors only the first time (so Russell's own color rules, if he adds any, are kept).
 
 ## 5. Deploy as a web app
 

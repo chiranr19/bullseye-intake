@@ -27,9 +27,16 @@ Legend: ✅ passed · ⬜ not yet run · ❌ failed (note why)
 | 17 | Sheet: Status dropdown present, New rows yellow, phone not mangled, Submitted shows Detroit time | ⬜ needs the backend | | |
 | 18 | Page served from GitHub Pages subpath with all relative links working; HTTPS enforced | ⬜ needs the repo pushed | | |
 
-Also checked on desktop: page weight 78 KB (budget 150 KB); no console errors on load; no
-third-party requests except the NHTSA decode; dark mode renders; the fixed send bar never covers
-the last field (body padding follows the bar's height).
+Also checked on desktop: page weight 81 KB (budget 150 KB); no console errors on load; no
+third-party requests except the NHTSA decode; dark and light mode render; the fixed send bar never
+covers the last field (body padding follows the bar's height); the "Test mode" badge shows while
+`MOCK_SUBMIT` is not `false`.
+
+After the independent review (2026-10-25), also checked: tapping Send right after a restored draft
+loads waits until 3.5 s after load, then sends; tapping Send while a photo is still shrinking waits
+for it and the photo is included; a restored draft with a decoded VIN shows "✓ 2003 Honda Accord"
+without a second NHTSA call; Start over after a failed send resets the Retry state; a VIN that
+fails to decode reveals the manual fields without moving focus.
 
 ## How to run the phone rows
 

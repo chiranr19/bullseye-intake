@@ -13,6 +13,7 @@
     needPhone: 'Add your mobile number',
     phoneShort: 'Enter a 10-digit mobile number',
     needSig: 'Please sign above',
+    sigUnavailable: "The signature box didn't load. Text Russell your info instead — he'll get your signature at the car.",
     photoLimit: 'You can add up to 2 photos. Remove one to add another.',
     photoWorking: 'Shrinking photo…',
     photoBad: "Couldn't read that photo. Try another one, or skip it.",
@@ -51,6 +52,8 @@
   var MAX_PHOTOS = 2;
   var PHOTO_TARGET_BYTES = 300 * 1024;
   var PHOTO_STEPS = [[1600, 0.75], [1600, 0.6], [1280, 0.6]]; // [long edge px, JPEG quality]
+  var DECODE_WAIT_MS = 1500;             // longest we wait for img.decode() before drawing anyway
+  var PHOTO_WAIT_MS = 20000;             // longest Send waits for a photo still shrinking (photos are optional)
   var VIN_RE = /^[A-HJ-NPR-Z0-9]{17}$/;
   var VIN_WEIGHTS = [8, 7, 6, 5, 4, 3, 2, 10, 0, 9, 8, 7, 6, 5, 4, 3, 2];
   var VIN_LETTERS = { A: 1, B: 2, C: 3, D: 4, E: 5, F: 6, G: 7, H: 8, J: 1, K: 2, L: 3, M: 4, N: 5, P: 7, R: 9,
@@ -60,6 +63,8 @@
   var VIN_DEBOUNCE_MS = 400;
   var VIN_TIMEOUT_MS = 6000;
   var SEND_TIMEOUT_MS = 30000;
+  var SEND_TIMEOUT_RETRY_MS = 60000;     // a retry on one bar of signal gets longer to finish
+  var MIN_FILL_MS = 3500;                // the server rejects sends < 3 s after load as bots; wait it out
   var MOCK_DELAY_MS = 1500;
   var ID_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   var DRAFT_FIELDS = ['name', 'phone', 'email', 'street', 'city', 'state', 'zip', 'insurer', 'policy_number',
@@ -70,6 +75,8 @@
     loadedAt: new Date(),
     ref: 'direct',
     photos: [],            // [{ type, dataUrl, bytes }]
+    photoBusy: null,       // promise of a photo still being shrunk, or null
+    phonePrev: '',         // digits in the phone field after the last input event
     vinDecoded: null,      // { year, make, model } from NHTSA, or null
     vinRequest: null,      // AbortController of the in-flight decode
     sigPad: null,
@@ -88,7 +95,7 @@
    'vin', 'vin-warn', 'vin-status', 'vin-manual', 'vin-manual-wrap', 'ymm', 'year', 'make', 'model',
    'loc-other-wrap', 'repair_location_text', 'notes',
    'auth-text', 'sig', 'sig-wrap', 'sig-clear',
-   'draft-banner', 'start-over', 'status',
+   'draft-banner', 'start-over', 'status', 'test-mode',
    'bar', 'send', 'send-msg', 'fallback', 'text-instead',
    'thanks', 'thanks-h', 'ref-code', 'summary', 'text-russell', 'save-contact'
   ].forEach(function (id) { el[camel(id)] = document.getElementById(id); });
@@ -126,6 +133,8 @@
       each(document.querySelectorAll('[data-link="sms"]'), function (a) { a.href = 'sms:' + e164; });
     }
     if (el.authText) el.authText.textContent = String(CONFIG.AUTH_TEXT || '');
+    // Anything other than an explicit false means sends are faked: say so on the page.
+    if (el.testMode) el.testMode.hidden = CONFIG.MOCK_SUBMIT === false;
   }
 
   function initInsurers() {
@@ -164,12 +173,11 @@
   }
 
   function initPhone() {
-    var prev = '';
     el.phone.addEventListener('input', function (e) {
       var d = phoneDigits(el.phone.value);
       // Backspacing over ")" or "-" removes no digit; take the digit before it so the key does something.
-      if (e && e.inputType === 'deleteContentBackward' && d === prev && d.length) d = d.slice(0, -1);
-      prev = d;
+      if (e && e.inputType === 'deleteContentBackward' && d === state.phonePrev && d.length) d = d.slice(0, -1);
+      state.phonePrev = d;
       el.phone.value = formatPhone(d);
       clearError(el.phone, el.errPhone);
       updateSubmitState();
@@ -208,7 +216,7 @@
 
     setPhotoMsg(COPY.photoWorking);
     setPhotoButtons(false);
-    compressImage(file).then(function (photo) {
+    var job = compressImage(file).then(function (photo) {
       if (state.photos.length >= MAX_PHOTOS) { setPhotoMsg(COPY.photoLimit, 'err'); return; }
       state.photos.push(photo);
       renderPhotos();
@@ -218,7 +226,9 @@
       setPhotoMsg(COPY.photoBad, 'err');
     }).then(function () {
       setPhotoButtons(true);
+      if (state.photoBusy === job) state.photoBusy = null;
     });
+    state.photoBusy = job; // trySubmit waits for this so a photo picked last is not dropped
   }
 
   function setPhotoButtons(enabled) {
@@ -254,26 +264,29 @@
   // when drawing an <img>, so portrait shots come out upright.
   function compressImage(file) {
     return loadImage(file).then(function (img) {
-      if (!img.naturalWidth || !img.naturalHeight) throw new Error('image has no size');
       var canvas = document.createElement('canvas');
-      var ctx = canvas.getContext('2d');
-      var dataUrl = '';
-      var bytes = Infinity;
-      for (var i = 0; i < PHOTO_STEPS.length; i++) {
-        var dims = fitWithin(img.naturalWidth, img.naturalHeight, PHOTO_STEPS[i][0]);
-        canvas.width = dims.w;
-        canvas.height = dims.h;
-        ctx.fillStyle = '#fff'; // transparent screenshots get a white background instead of black
-        ctx.fillRect(0, 0, dims.w, dims.h);
-        ctx.drawImage(img, 0, 0, dims.w, dims.h);
-        dataUrl = canvas.toDataURL('image/jpeg', PHOTO_STEPS[i][1]);
-        bytes = dataUrlBytes(dataUrl);
-        if (bytes <= PHOTO_TARGET_BYTES) break;
+      try {
+        if (!img.naturalWidth || !img.naturalHeight) throw new Error('image has no size');
+        var ctx = canvas.getContext('2d');
+        var dataUrl = '';
+        var bytes = Infinity;
+        for (var i = 0; i < PHOTO_STEPS.length; i++) {
+          var dims = fitWithin(img.naturalWidth, img.naturalHeight, PHOTO_STEPS[i][0]);
+          canvas.width = dims.w;
+          canvas.height = dims.h;
+          ctx.fillStyle = '#fff'; // transparent screenshots get a white background instead of black
+          ctx.fillRect(0, 0, dims.w, dims.h);
+          ctx.drawImage(img, 0, 0, dims.w, dims.h);
+          dataUrl = canvas.toDataURL('image/jpeg', PHOTO_STEPS[i][1]);
+          bytes = dataUrlBytes(dataUrl);
+          if (bytes <= PHOTO_TARGET_BYTES) break;
+        }
+        if (!dataUrl || dataUrl.indexOf('data:image/jpeg') !== 0) throw new Error('encode failed');
+        return { type: 'image/jpeg', dataUrl: dataUrl, bytes: bytes };
+      } finally {
+        if (img.src.indexOf('blob:') === 0) URL.revokeObjectURL(img.src);
+        canvas.width = canvas.height = 0;
       }
-      if (img.src.indexOf('blob:') === 0) URL.revokeObjectURL(img.src);
-      canvas.width = canvas.height = 0;
-      if (!dataUrl || dataUrl.indexOf('data:image/jpeg') !== 0) throw new Error('encode failed');
-      return { type: 'image/jpeg', dataUrl: dataUrl, bytes: bytes };
     });
   }
 
@@ -285,7 +298,15 @@
       function ok() { if (!done) { done = true; resolve(img); } }
       function fail() { if (!done) { done = true; URL.revokeObjectURL(url); reject(new Error('decode failed')); } }
       img.onload = function () {
-        if (typeof img.decode === 'function') img.decode().then(ok, ok); else ok();
+        // decode() pre-decodes off the main thread, but its promise waits for a paint and can stall
+        // for as long as the page is not painting. The image is loaded either way, so go on after
+        // a short wait at the latest; drawImage decodes on the spot if needed.
+        if (typeof img.decode === 'function') {
+          img.decode().then(ok, ok);
+          setTimeout(ok, DECODE_WAIT_MS);
+        } else {
+          ok();
+        }
       };
       img.onerror = fail;
       img.src = url;
@@ -336,7 +357,7 @@
     cancelVinRequest();
     if (typeof window.fetch !== 'function' || typeof window.AbortController !== 'function') {
       setVinStatus('');
-      showManualFields(true);
+      showManualFields(false);
       return;
     }
     var ctrl = new AbortController();
@@ -362,7 +383,7 @@
         if (el.vin.value !== vin) return;
         console.info('VIN decode unavailable:', err && err.message);
         setVinStatus('');
-        showManualFields(true);                        // quietly; no technical error
+        showManualFields(false);                       // quietly: no error, no focus jump
       })
       .then(function () {
         clearTimeout(timer);
@@ -375,6 +396,11 @@
     el.year.value = d.year;
     el.make.value = d.make;
     el.model.value = d.model;
+    renderDecodedStatus(d);
+    saveDraftSoon();
+  }
+
+  function renderDecodedStatus(d) {
     el.vinStatus.textContent = '';
     el.vinStatus.className = 'msg-ok';
     el.vinStatus.hidden = false;
@@ -385,7 +411,6 @@
     link.id = 'vin-not-right';
     link.textContent = COPY.vinNotRight;
     el.vinStatus.appendChild(link);
-    saveDraftSoon();
   }
 
   // If the user edits the VIN after a decode, drop the decoded year/make/model — unless they
@@ -449,7 +474,11 @@
   // ---- Signature ----------------------------------------------------------------------------
   function initSignature() {
     if (typeof window.SignaturePad !== 'function') {
+      // vendor/signature_pad.min.js did not arrive (bad signal). Signing is required, so give a way out.
       console.error('signature_pad did not load');
+      el.errSig.textContent = COPY.sigUnavailable;
+      el.errSig.hidden = false;
+      el.fallback.hidden = false;
       return;
     }
     state.sigPad = new window.SignaturePad(el.sig, { penColor: '#000', minWidth: 1, maxWidth: 2.5, throttle: 8 });
@@ -529,6 +558,7 @@
       v: 1,
       ref: state.ref,
       fields: readForm(),
+      vin_decoded: state.vinDecoded,
       sig: signatureEmpty() ? null : state.sigPad.toData(),
       signed_at: state.signedAt ? isoWithOffset(state.signedAt) : null,
       saved_at: isoWithOffset(new Date())
@@ -565,7 +595,8 @@
         if (radio) radio.checked = true;
         if (v === 'other') any = true;
       } else if (name === 'phone') {
-        el.phone.value = formatPhone(phoneDigits(v));
+        state.phonePrev = phoneDigits(v);
+        el.phone.value = formatPhone(state.phonePrev);
         any = true;
       } else if (name === 'state') {
         el.state.value = v;
@@ -585,8 +616,17 @@
       }
     }
     syncRepairLocation();
-    if (el.year.value || el.make.value || el.model.value) showManualFields(false);
-    if (el.vin.value) el.vin.dispatchEvent(new Event('input', { bubbles: true })); // re-check and re-decode
+    var dec = d.vin_decoded;
+    var decValid = dec && typeof dec === 'object' &&
+      typeof dec.year === 'string' && typeof dec.make === 'string' && typeof dec.model === 'string';
+    if (decValid && el.vin.value && el.year.value === dec.year && el.make.value === dec.make && el.model.value === dec.model) {
+      state.vinDecoded = dec;              // same VIN, same fields: no need to ask NHTSA again
+      renderDecodedStatus(dec);
+    } else if (el.year.value || el.make.value || el.model.value) {
+      showManualFields(false);             // keep what they typed; a re-decode could overwrite a correction
+    } else if (el.vin.value) {
+      el.vin.dispatchEvent(new Event('input', { bubbles: true })); // re-check and decode
+    }
     return any;
   }
 
@@ -609,6 +649,11 @@
     clearError(el.phone, el.errPhone);
     clearError(el.sigWrap, el.errSig);
     el.draftBanner.hidden = true;
+    state.failures = 0;
+    el.send.textContent = COPY.send;
+    el.sendMsg.hidden = true;
+    el.sendMsg.textContent = '';
+    el.fallback.hidden = true;
     setRef(refFromUrl() || 'direct');
     updateSubmitState();
     window.scrollTo(0, 0);
@@ -651,6 +696,8 @@
     el.intake.addEventListener('submit', function (e) { e.preventDefault(); trySubmit(); });
     el.send.addEventListener('click', trySubmit);
     el.name.addEventListener('input', function () { clearError(el.name, el.errName); updateSubmitState(); });
+    // Rebuild the fallback text right before it opens, in case fields changed after the failure.
+    el.textInstead.addEventListener('click', function () { el.textInstead.href = smsLink(fallbackSmsBody()); });
   }
 
   function trySubmit() {
@@ -660,15 +707,23 @@
 
     state.submitting = true;
     setSendUi('sending');
-    var payload = buildPayload();
+    var sinceLoad = Date.now() - state.loadedAt.getTime();
 
-    sendPayload(payload).then(function (result) {
-      state.submitting = false;
-      onSendSuccess(result);
-    }).catch(function (err) {
-      state.submitting = false;
-      onSendFailure(err);
-    });
+    Promise.resolve()
+      .then(function () {                                                  // a photo still shrinking
+        return state.photoBusy ? Promise.race([state.photoBusy, sleep(PHOTO_WAIT_MS)]) : null;
+      })
+      .then(function () { return sleep(Math.max(0, MIN_FILL_MS - sinceLoad)); }) // restored drafts can be fast
+      .then(buildPayload)
+      .then(sendPayload)
+      .then(function (result) {
+        state.submitting = false;
+        onSendSuccess(result);
+      }, function (err) {
+        state.submitting = false;
+        onSendFailure(err);
+      })
+      .catch(function (err) { console.error('after send:', err && err.message); });
   }
 
   function buildPayload() {
@@ -709,12 +764,12 @@
     if (mode === 'fail') {
       return sleep(1000).then(function () { throw new Error('MOCK_SUBMIT is set to "fail"'); });
     }
-    var url = String(CONFIG.APPS_SCRIPT_URL || '');
+    var url = String(CONFIG.APPS_SCRIPT_URL || '').trim();
     if (!/^https:\/\/script\.google\.com\/(macros|a\/macros\/[^/]+)\/s\/[^/]+\/exec$/.test(url)) {
       return Promise.reject(new Error('APPS_SCRIPT_URL is not a valid /exec URL (see config.js)'));
     }
     var ctrl = new AbortController();
-    var timer = setTimeout(function () { ctrl.abort(); }, SEND_TIMEOUT_MS);
+    var timer = setTimeout(function () { ctrl.abort(); }, state.failures ? SEND_TIMEOUT_RETRY_MS : SEND_TIMEOUT_MS);
     return fetch(url, {
       method: 'POST',
       body: JSON.stringify(payload),
