@@ -1,0 +1,9 @@
+# local tooling
+.claude/
+.venv/
+__pycache__/
+*.pyc
+.env
+# OS noise
+.DS_Store
+Thumbs.db
