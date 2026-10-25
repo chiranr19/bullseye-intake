@@ -25,7 +25,7 @@ Legend: ✅ passed · ⬜ not yet run · ❌ failed (note why)
 | 15 | Honeypot filled → server rejects; submission 1 s after load → server rejects | ⬜ needs the backend | | |
 | 16 | Email arrives with correct subject, all fields, photo attached, Sheet and folder links work | ⬜ needs the backend | | |
 | 17 | Sheet: Status dropdown present, New rows yellow, phone not mangled, Submitted shows Detroit time | ⬜ needs the backend | | |
-| 18 | Page served from GitHub Pages subpath with all relative links working; HTTPS enforced | ⬜ needs the repo pushed | | |
+| 18 | Page served from GitHub Pages subpath with all relative links working; HTTPS enforced | ✅ live at `https://chiranr19.github.io/bullseye-intake/`; 8 referenced files byte-identical to the repo; `http://` → 301 to `https://`; `?ref=flyer` kept | | |
 
 Also checked on desktop: page weight 81 KB (budget 150 KB); no console errors on load; no
 third-party requests except the NHTSA decode; dark and light mode render; the fixed send bar never

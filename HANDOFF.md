@@ -1,8 +1,8 @@
 # HANDOFF — Bullseye Intake
 
-**STATUS:** Phases 0, 1, 2 and 4 of `bullseye-master-brief.md` are complete, reviewed and committed on `main`. Phase 3 (the live backend) is built but not deployed: it needs a Google account and a GitHub repo, both human steps.
+**STATUS:** Phases 0, 1, 2 and 4 of `bullseye-master-brief.md` are complete, reviewed and committed on `main`. Phase 3 is half done: the public repo and GitHub Pages are live; the Apps Script backend is built but not yet deployed in a Google account.
 **WHAT:** Static intake form (`index.html`, `assets/`), Apps Script backend (`apps-script/`), QR codes (`qr/`), docs (`docs/`, `README.md`, `DECISIONS.md`, `GOTCHAS.md`). Every page behavior in `docs/TESTING.md` passed in the desktop browser pane; nothing has run on a real phone or against a real backend yet.
-**NEXT:** (1) deploy the backend in `chiranr19@gmail.com` for the pilot following `apps-script/DEPLOY.md`; (2) create the public GitHub repo `bullseye-intake`, push, enable Pages with HTTPS; (3) fill the three `config.js` placeholders and set `MOCK_SUBMIT: false`; (4) run the phone rows of `docs/TESTING.md`; (5) get the real `AUTH_TEXT` from Russell's paper form.
+**NEXT:** (1) deploy the backend in `chiranr19@gmail.com` for the pilot following `apps-script/DEPLOY.md`; (2) fill `APPS_SCRIPT_URL` and `FORM_SECRET` in `config.js` and set `MOCK_SUBMIT: false`, commit, push; (3) run rows 15–17 and the phone rows of `docs/TESTING.md`; (4) get the real `AUTH_TEXT` from Russell's paper form.
 
 ## Where things stand
 
@@ -11,9 +11,9 @@
 | Form page | Done. 81 KB total. Verified at 375×812 in Chrome (desktop pane). |
 | Backend `Code.gs` | Written and reviewed line by line against the Apps Script API; never executed. First `setup()` run is the real test. |
 | `config.js` | Placeholders for `APPS_SCRIPT_URL`, `FORM_SECRET`, `AUTH_TEXT`; `MOCK_SUBMIT: true`. The page shows a "Test mode" badge until it is `false`. |
-| QR codes | Generated for `https://chiranr19.github.io/bullseye-intake/?ref=…` and decode-verified. **That URL is a prediction** (GitHub user `chiranr19`, repo name `bullseye-intake`). Re-run `uv run scripts/make_qr.py --base-url <real url>` if either differs. |
-| Russell's guide | Written with the predicted URL. Update the two links if the URL changes. |
-| Git | Local repo only, 3 commits, no remote. |
+| QR codes | Generated for `https://chiranr19.github.io/bullseye-intake/?ref=…` and decode-verified. URL confirmed live on 2026-10-25. |
+| Russell's guide | Links point at the live URL. |
+| Git | `origin` = `https://github.com/chiranr19/bullseye-intake` (public). Pages serves `main` root with HTTPS enforced. |
 
 ## Pilot plan (agreed in the first session, 2026-10-25)
 
@@ -29,7 +29,6 @@ The pilot backend lives in Chiran's Gmail (`chiranr19@gmail.com`): `NOTIFY_EMAIL
 - Signature crispness on a 3× screen.
 - Everything in `Code.gs`: Sheet formats (text columns + the apostrophe guard for `=`-leading
   cells), Drive folders, email with attachments, honeypot/too-fast rejection, Detroit time.
-- GitHub Pages subpath + HTTPS.
 
 ## Risks and open questions
 
