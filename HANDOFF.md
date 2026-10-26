@@ -2,7 +2,7 @@
 
 **STATUS:** The hardened form is fully live (2026-10-26): the page and backend version 3, verified end to end with one real submission and six refusal probes. What remains needs a phone, Russell, or Chiran.
 **WHAT:** Static form on GitHub Pages plus the Apps Script backend in Chiran's Google account (pilot). `SECURITY.md` lists the protections; `tests/backend.test.js` proves the backend (18 tests); `docs/TESTING.md` records every check.
-**NEXT:** (1) delete the three test rows and their Drive folders; (2) turn on two-step sign-in for GitHub and Google; (3) settle the page's permanent address before printing QR codes (README, "Moving the page"); (4) send Russell the text in `docs/HANDOVER_MESSAGES.md`; (5) run the phone rows of `docs/TESTING.md`; (6) replace `AUTH_TEXT` with the wording from Russell's paper form.
+**NEXT:** (1) send Russell the first text in `docs/HANDOVER_MESSAGES.md`; (2) set up his own Google and GitHub accounts with him and move the backend and page there (`apps-script/DEPLOY.md`, README "Moving the page"), leaving a redirect at the current address; (3) put the wording from his paper form into `AUTH_TEXT`; (4) run the phone rows of `docs/TESTING.md`. Deferred by Chiran: deleting the three test rows, and two-step sign-in, since everything moves to Russell's accounts.
 
 ## Where things stand
 

@@ -6,13 +6,19 @@ answers, and a 15-minute call or a stop at the truck. Edit freely; these are dra
 ## 1. The text (send this first)
 
 > Hi Russell, it's Chiran. I built Bullseye a free digital version of your customer form. Customers
-> scan a QR code or tap a link, fill in their info, snap their insurance card and sign on their phone.
-> You get an email with everything, and a spreadsheet tracks each job. 2-minute picture guide:
-> https://chiranr19.github.io/bullseye-intake/guide.html
+> fill in their info, snap their insurance card and sign on their phone, and you get an email with
+> everything.
 >
-> Can I show you how it works? Send me your email or a good time for a quick call.
+> Try the form yourself: https://chiranr19.github.io/bullseye-intake/?ref=russell
+> How it works, in 2 minutes: https://chiranr19.github.io/bullseye-intake/guide.html
+>
+> Send a test whenever you like. For now the tests come to me. When you're ready, I'll help you set
+> it up on your own Google and GitHub accounts so everything comes straight to you. Just let me know
+> a good time.
 
-If he asks "what's the catch": *No catch. It runs on free Google tools.*
+The form link is his own `?ref=russell` link, so his tests show "russell" in the sheet's Source column
+and are easy to tell apart. If he asks "what's the catch": *No catch. It runs on free Google and
+GitHub tools.*
 
 ## 2. The QR code photo (send once he has seen the guide)
 
@@ -41,18 +47,17 @@ compression, blur and a tilt. Two limits:
 > https://chiranr19.github.io/bullseye-intake/guide.html
 >
 > **Try the form yourself (it's live, send a test if you like):**
-> https://chiranr19.github.io/bullseye-intake/?ref=text
+> https://chiranr19.github.io/bullseye-intake/?ref=russell
 >
 > In short: a customer fills it in on their phone and signs. You get an email with their details
 > and the insurance card photo, a row in a spreadsheet, and a folder with the photos. Only name,
 > phone and signature are required, so it never gets in the way.
 >
-> Right now test entries come to me. To move it to you I need two things:
+> Right now test entries come to me. To make it yours, we'll set it up together on your own Google
+> account and a free GitHub account, which hosts the page. I'll also need the exact wording of the
+> authorization on your paper form, so the signature means the same thing.
 >
-> 1. The Gmail address you want the emails to go to (a free Gmail account is enough).
-> 2. The exact wording of the authorization on your paper form, so the signature means the same thing.
->
-> When would a call or a quick stop at the truck suit you? I'll bring the printed QR codes.
+> When would a call or a quick stop at the truck suit you?
 >
 > Chiran
 
@@ -65,9 +70,10 @@ It is self-contained (the QR code is drawn inside the page).
    and signs. Takes 90 seconds and makes everything below obvious.
 2. **Show the email** that just arrived. Subject line, the tappable phone number, the card photo.
 3. **Show the spreadsheet** on his phone (Google Sheets app). Tap the Status cell, change it.
-4. **Hand over the QR codes.** Flyer, truck, the card for the cab. Say which is which.
-5. **Agree the two things you need** (Gmail address, authorization wording) and when you'll move
-   it over. Until then it keeps working through your account.
+4. **Show him the QR codes.** Flyer, truck, the card for the cab; say which is which. Print them
+   only once the page has its permanent address on his GitHub account.
+5. **Agree a time to set up his Google and GitHub accounts**, and get the authorization wording from
+   his paper form. Until then it keeps working through your account.
 
 Things he will ask, and the honest answers:
 
@@ -78,3 +84,5 @@ Things he will ask, and the honest answers:
 - *Can I change the wording / add columns?* Yes. The columns right of Source are his.
 - *Who can see this?* Only him (and you, until it moves to his account). The guide's "Is it safe?"
   part explains the rest in plain words.
+- *What's GitHub?* A free service that hosts the form's web page. He needs an account only so the
+  page is his; Chiran can keep looking after it as a collaborator.

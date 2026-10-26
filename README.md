@@ -67,9 +67,13 @@ pasting a new `Code.gs` into Apps Script.
 ## Moving the page (do it before printing any QR code)
 
 Every QR code holds the page's address, so the address should be the permanent one before anything
-is printed. Two good homes, both kept up by Chiran:
+is printed. Three good homes:
 
-- **Free:** a GitHub organization named for the business (for example `bullseye-chip-repair`).
+- **Russell's own GitHub account (the current plan):** a free account in his name, with this repo
+  copied into it and Chiran added as a collaborator so he can keep maintaining it. The page lives at
+  `https://<his-username>.github.io/bullseye-intake/`, or at `https://<his-username>.github.io/` if
+  the repo is named `<his-username>.github.io`.
+- **Free, kept by Chiran:** a GitHub organization named for the business (for example `bullseye-chip-repair`).
   Create it at <https://github.com/organizations/plan>, then copy this repo into it as
   `<org>.github.io` so the page lives at `https://<org>.github.io/`. Russell can be added as an
   owner later; he never has to log in.
