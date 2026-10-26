@@ -1,5 +1,8 @@
 # Bullseye intake form — Russell's one-page guide
 
+The picture version of this page, for Russell's phone: **https://chiranr19.github.io/bullseye-intake/guide.html**
+(`guide.html` in the repo; self-contained, can be emailed as a file).
+
 ## 1. Your link
 
 **https://chiranr19.github.io/bullseye-intake/?ref=text**

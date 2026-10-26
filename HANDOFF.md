@@ -12,6 +12,7 @@
 | Backend | Script project "Bullseye Intake" bound to the Sheet "Bullseye Customers" in `chiranr19@gmail.com`. Deployment version 2. Script Properties `FORM_SECRET` and `NOTIFY_EMAIL` set; no CC. |
 | Verified live | Health check; wrong secret, honeypot, too-fast and non-JSON requests rejected; two submissions produced the Sheet row, the Drive folder (`card-1.jpg`, `signature.png`, `details.txt`) and the email with the photo attached and working links; leading-zero ZIP and 20-digit policy number stored as text; `=`-leading text stays text; Submitted shows Detroit time. |
 | QR codes | Point at the live URL. Decode-verified. |
+| Handover to Russell | `guide.html` (visual, plain-English, live at `/guide.html`) and `docs/HANDOVER_MESSAGES.md` (first text, email, 15-minute call plan). Not sent yet. |
 | Git | `origin` = `https://github.com/chiranr19/bullseye-intake` (public). Pages builds `main` root, HTTPS enforced. |
 
 ## Found during the live test
