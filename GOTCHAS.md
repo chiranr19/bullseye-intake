@@ -19,3 +19,15 @@ Surprises that cost time here. One `##` line per symptom, phrased as what you wo
 - **Cause:** A web app deployment pins a version. Saving code does not publish it.
 - **Fix:** Deploy → Manage deployments → pencil → Version: New version → Deploy. Same URL.
 - **Scope:** every Apps Script web app.
+
+## Apps Script `getRange('A2:A').setNumberFormat(...)` applied nothing — first live row stored ZIP as a number, Submitted unformatted  (2026-10-25)
+- **Context:** `setup()` ran clean, the Status dropdown and row colors were there, but row 2 had ZIP `48503` right-aligned (a number) and Submitted showing a raw `10/25/2026 22:05:32`. Even empty rows had no format.
+- **Cause:** The open-ended A1 ranges (`'A2:A'`, `'B2:V'`) with `setNumberFormat` silently did not take on the fresh sheet. Not fully explained; bounded ranges do work.
+- **Fix:** `setup()` uses `getRange(row, col, numRows, numCols)` and logs `getNumberFormat()` read back from A3 and J3. `writeRow_` sets the formats on the exact row right before `setValues`, so the data is safe even if `setup()` was never re-run. Verified: ZIP `02134` and a 20-digit policy number stored as text.
+- **Scope:** Apps Script + Sheets; check with the log line, not by eye.
+
+## Sheets toolbar "123" menu shows "Automatic" checked for a cell whose format is `@`  (2026-10-25)
+- **Context:** Checking cell formats in the Sheet UI after `setup()`; "Plain text" was never checked even when the API returned `@` for the same cell.
+- **Cause:** UI quirk; the menu does not reflect formats set through the API.
+- **Fix:** Judge by alignment (text is left-aligned, numbers right-aligned) or by the `Formats after setup` log line.
+- **Scope:** Google Sheets web UI.

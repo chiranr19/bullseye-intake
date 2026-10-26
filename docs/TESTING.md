@@ -21,10 +21,10 @@ Legend: ✅ passed · ⬜ not yet run · ❌ failed (note why)
 | 11 | Successful submit clears the draft; reopening shows an empty form | ✅ | ⬜ | ⬜ |
 | 12 | Bad `APPS_SCRIPT_URL` → "Couldn't send" + Retry; second failure shows "Text Russell your info instead" and the SMS body contains the typed fields | ✅ via `MOCK_SUBMIT: "fail"` | ⬜ | ⬜ |
 | 13 | Thank-you: reference code shown; **Text Russell** opens Messages with the body on iOS and Android; **Save Russell's contact** opens/downloads the vCard, number still tappable either way | ✅ code + links built; opening Messages needs a phone | ⬜ | ⬜ |
-| 14 | `?ref=flyer` lands in the Sheet's Source column; no `ref` → `direct` | ✅ page side (`flyer`, `text`, `direct` in payload); Sheet side needs the backend | ⬜ | ⬜ |
-| 15 | Honeypot filled → server rejects; submission 1 s after load → server rejects | ⬜ needs the backend | | |
-| 16 | Email arrives with correct subject, all fields, photo attached, Sheet and folder links work | ⬜ needs the backend | | |
-| 17 | Sheet: Status dropdown present, New rows yellow, phone not mangled, Submitted shows Detroit time | ⬜ needs the backend | | |
+| 14 | `?ref=flyer` lands in the Sheet's Source column; no `ref` → `direct` | ✅ Source column shows `flyer` and `truck` for the two live tests; `direct` verified in the payload | ⬜ | ⬜ |
+| 15 | Honeypot filled → server rejects; submission 1 s after load → server rejects | ✅ curl against the live `/exec`: wrong secret, honeypot filled, 1 s submit and a non-JSON body all answer `{"ok":false}` with the generic message | | |
+| 16 | Email arrives with correct subject, all fields, photo attached, Sheet and folder links work | ✅ `New repair: Test Customer (delete me) — 2003 Honda Accord — State Farm`, every field, `card-1.jpg` attached, sheet / folder / signature links open | | |
+| 17 | Sheet: Status dropdown present, New rows yellow, phone not mangled, Submitted shows Detroit time | ✅ after the `writeRow_` fix (see below): dropdown, yellow New rows, phone `(810) 555-0123` as text, ZIP `02134` keeps its zero, a 20-digit policy number is intact, `=SUM(...)` note stays text, Submitted `Oct 25, 2026 10:16 PM` Detroit | | |
 | 18 | Page served from GitHub Pages subpath with all relative links working; HTTPS enforced | ✅ live at `https://chiranr19.github.io/bullseye-intake/`; 8 referenced files byte-identical to the repo; `http://` → 301 to `https://`; `?ref=flyer` kept | | |
 
 Also checked on desktop: page weight 81 KB (budget 150 KB); no console errors on load; no
@@ -37,6 +37,18 @@ loads waits until 3.5 s after load, then sends; tapping Send while a photo is st
 for it and the photo is included; a restored draft with a decoded VIN shows "✓ 2003 Honda Accord"
 without a second NHTSA call; Start over after a failed send resets the Retry state; a VIN that
 fails to decode reveals the manual fields without moving focus.
+
+## Live backend test (2026-10-25)
+
+Two submissions from the Pages site in the desktop pane: `BW-20261025-ZKX4` (`?ref=flyer`, 3.2 MB
+photo → 288 KB, VIN decoded, repair location "other") and `BW-20261025-CYGH` (`?ref=truck`,
+leading-zero ZIP, 20-digit policy number, `=SUM(1,2)` note, no photo). Both rows and their Drive
+folders are still there; delete them or set Status to Cancelled.
+
+The first submission found a real bug: the number formats from `setup()` had never applied, so ZIP
+`48503` was stored as a number and Submitted showed a raw date. Fixed in `Code.gs` (`writeRow_`
+sets the formats on the row it writes, `setup()` uses bounded ranges and logs what it reads back),
+published as deployment version 2, re-tested with the second submission.
 
 ## How to run the phone rows
 

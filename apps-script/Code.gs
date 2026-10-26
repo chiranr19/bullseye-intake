@@ -27,6 +27,8 @@ var ALLOWED_IMAGE_TYPES = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp
 var ID_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 var USER_ERROR = 'Something went wrong on our side. Please try again or text Russell.';
 
+var DATETIME_FORMAT = 'mmm d, yyyy h:mm am/pm';
+
 var HEADERS = [
   'Submitted', 'ID', 'Status', 'Name', 'Phone', 'Email', 'Street', 'City', 'State', 'ZIP',
   'Insurer', 'Policy #', 'VIN', 'Year', 'Make', 'Model', 'Repair location', 'Notes',
@@ -66,11 +68,15 @@ function setup() {
   HEADERS.forEach(function (h, i) { sheet.setColumnWidth(i + 1, COLUMN_WIDTHS[h] || 110); });
 
   // Formats: Submitted is a real datetime; every column we write is plain text so phone numbers,
-  // ZIPs with leading zeros and long policy numbers are stored exactly as typed. Open-ended ranges
-  // so row 1001+ behaves the same.
-  var lastWrittenLetter = columnLetter_(FIRST_MANUAL_COLUMN - 1);
-  sheet.getRange('A2:A').setNumberFormat('mmm d, yyyy h:mm am/pm');
-  sheet.getRange('B2:' + lastWrittenLetter).setNumberFormat('@');
+  // ZIPs with leading zeros and long policy numbers are stored exactly as typed. writeRow_() sets
+  // the same formats on each row it writes, so this is a convenience for the empty sheet, not
+  // the thing that keeps the data safe.
+  var dataRows = Math.max(1, sheet.getMaxRows() - 1);
+  sheet.getRange(2, 1, dataRows, 1).setNumberFormat(DATETIME_FORMAT);
+  sheet.getRange(2, 2, dataRows, FIRST_MANUAL_COLUMN - 2).setNumberFormat('@');
+  SpreadsheetApp.flush();
+  console.log('Formats after setup: A3="%s" J3="%s" (expected the datetime pattern and "@")',
+    sheet.getRange('A3').getNumberFormat(), sheet.getRange('J3').getNumberFormat());
 
   // Status dropdown
   var statusCol = HEADERS.indexOf('Status') + 1;
@@ -128,7 +134,7 @@ function doPost(e) {
       var id = makeId_(sheet);
       var folder = makeSubmissionFolder_(props, id, payload.name);
       var files = saveFiles_(folder, payload, id);
-      sheet.appendRow(buildRow_(id, payload, files, folder));
+      writeRow_(sheet, buildRow_(id, payload, files, folder));
       return { id: id, folder: folder, files: files };
     });
 
@@ -354,6 +360,22 @@ function buildRow_(id, p, files, folder) {
   ];
   while (row.length < HEADERS.length) row.push('');
   return row.map(safeCell_);
+}
+
+// appendRow() lets Sheets parse the values as if typed: "48503" becomes a number, "0012" becomes
+// 12, a 20-digit policy number loses precision. Setting the formats on the exact row first and
+// then the values keeps every customer field as typed. Only the columns the form fills are
+// written; Russell's columns to the right are left untouched.
+function writeRow_(sheet, row) {
+  var n = FIRST_MANUAL_COLUMN - 1;
+  var r = sheet.getLastRow() + 1;
+  if (r > sheet.getMaxRows()) sheet.insertRowsAfter(sheet.getMaxRows(), r - sheet.getMaxRows());
+  var range = sheet.getRange(r, 1, 1, n);
+  var formats = [];
+  for (var i = 0; i < n; i++) formats.push(i === 0 ? DATETIME_FORMAT : '@');
+  range.setNumberFormats([formats]);
+  range.setValues([row.slice(0, n)]);
+  return r;
 }
 
 // Sheets treats a cell starting with = + - @ as a formula. Customer text must never be one.

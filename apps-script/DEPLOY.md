@@ -38,8 +38,8 @@ Click **Save script properties**. `ROOT_FOLDER_ID` is written automatically by t
 2. A permissions dialog appears: **Review permissions** → choose the account → Google warns the
    app isn't verified (that's normal for your own script): click **Advanced** → **Go to Bullseye
    Intake (unsafe)** → **Allow**. It asks for Sheets (this file only), Drive, and sending email.
-3. Open **Execution log** (bottom panel). You should see `setup() done` and either
-   `All Script Properties set` or a list of what is still missing.
+3. Open **Execution log** (bottom panel). You should see `Formats after setup: A3="mmm d, yyyy h:mm am/pm" J3="@"`,
+   then `setup() done` and either `All Script Properties set` or a list of what is still missing.
 4. Check the Sheet tab: a tab named **Customers** with a bold yellow header row, frozen.
    Check Drive: a folder **Bullseye Intake** exists.
 
@@ -65,7 +65,8 @@ FORM_SECRET: "the same random string as the Script Property",
 MOCK_SUBMIT: false,
 ```
 
-Commit and push. GitHub Pages updates within a minute or two.
+Commit and push. GitHub Pages updates within a minute or two. A phone that already opened the page
+may keep the old `config.js` for up to 10 more minutes (the server sends `max-age=600`).
 
 ## 7. Send a test
 
