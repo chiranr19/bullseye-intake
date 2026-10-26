@@ -2,6 +2,8 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src 'self' data:; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
 <meta name="theme-color" content="#FFD400">
@@ -367,9 +369,11 @@
       <li><b>Only you see it.</b> The spreadsheet, the folders and the emails are private to the Google account. Nothing is published anywhere. The page is also marked so search engines don't list it.</li>
       <li><b>Nothing is sold, tracked or shared.</b> No ads, no cookies, no tracking, no outside company in the middle.</li>
       <li><b>One outside lookup, and only for the VIN.</b> When a customer types a VIN, the page asks the U.S. government's free vehicle database (NHTSA) for the year, make and model. It sends the VIN and nothing else. If that lookup is slow or down, the customer just types the car in by hand.</li>
-      <li><b>Robots are kept out.</b> A hidden trap field, a timer, and a code word baked into the page stop spam programs. Junk is thrown away before it reaches your spreadsheet.</li>
-      <li><b>Photos are shrunk first.</b> The customer's phone shrinks the card photo before sending, so it goes through fast and doesn't fill up your Drive. The text on the card stays readable.</li>
-      <li><b>The signature means what the paper one means.</b> The customer signs under the same wording as your paper form. The page saves the signature as a picture, plus the time and which version of the wording they saw.</li>
+      <li><b>Robots are kept out.</b> A hidden trap field, a timer and a code word stop spam programs. If one still gets through, the form takes at most 15 forms an hour and 40 a day, then asks customers to text you instead. Your inbox and Drive can't be flooded.</li>
+      <li><b>Customers type the notes, not Bullseye.</b> If a note ever asks you to tap a link or pay something, ignore it. Links typed by customers show up broken on purpose, like <code>example[.]com</code>, so you can't tap one by accident. Hidden characters that could trick an AI assistant are removed.</li>
+      <li><b>Your phone forgets.</b> If a customer doesn't finish the form on your phone, what they typed clears itself after 15 minutes, so the next customer never sees it. A signature is never saved for later. Whoever sends the form signs it right then.</li>
+      <li><b>Photos are shrunk and checked.</b> The customer's phone shrinks the card photo before sending, so it goes through fast and doesn't fill up your Drive. The text on the card stays readable. Anything that isn't a real picture is refused.</li>
+      <li><b>The signature means what the paper one means.</b> The customer signs under the same wording as your paper form. Their folder keeps the signature, the exact wording they saw, and the time.</li>
       <li><b>If something is down.</b> On the rare day Google or GitHub has a problem, the customer sees "Couldn't send" and a button that opens a text to you with their details instead. Paper still works too.</li>
     </ul>
   </section>
