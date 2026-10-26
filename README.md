@@ -1,5 +1,7 @@
 # Bullseye Intake
 
+`guide.html` is the plain-English visual explainer for Russell (live at `/guide.html`); `docs/HANDOVER_MESSAGES.md` has the messages to send him.
+
 Digital customer intake form for **Bullseye Mobile Windshield Chip Repair** (Russell T., Michigan).
 Replaces the paper form. A customer opens a link or scans a QR code, fills in name, phone and a
 signature (everything else is optional), snaps a photo of their insurance card, and the result lands
