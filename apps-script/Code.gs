@@ -11,6 +11,8 @@
  *   NOTIFY_EMAIL    where the "New repair" email goes (Russell's Gmail)
  *   CC_EMAIL        optional second address (Chiran during the pilot)
  *   ROOT_FOLDER_ID  written by setup(); the Drive folder every submission goes under
+ *   MAX_PER_HOUR    optional; flood guard, default 15 forms an hour (no redeploy needed to change)
+ *   MAX_PER_DAY     optional; flood guard, default 40 forms a day
  *
  * The customer never sees a technical error. Real errors go to console.error (Executions log).
  */
@@ -19,10 +21,16 @@ var TZ = 'America/Detroit';
 var SHEET_NAME = 'Customers';
 var ROOT_FOLDER_NAME = 'Bullseye Intake';
 var MIN_FILL_SECONDS = 3;
-var MAX_BODY_CHARS = 6 * 1024 * 1024;        // ~6 MB of JSON; a real submission is well under 1 MB
+var MAX_BODY_CHARS = 2.5 * 1024 * 1024;      // ~2.5 MB of JSON; a real submission is under 1 MB
 var MAX_PHOTOS = 2;
-var MAX_PHOTO_BYTES = 1.5 * 1024 * 1024;     // the page targets ≤ 300 KB; anything near this is abuse
-var MAX_SIGNATURE_BYTES = 600 * 1024;
+var MAX_PHOTO_BYTES = 600 * 1024;            // the page sends photos of ≤ ~300 KB; twice that is the ceiling
+var MAX_SIGNATURE_BYTES = 300 * 1024;        // a signature PNG is 10–60 KB
+// Flood guard. A one-person shop never sees this many real forms. A robot that gets past the
+// secret, the honeypot and the timer stops here, well before Gmail's 100-recipients-a-day limit
+// or the Drive quota. Raise either with a Script Property of the same name; no redeploy needed.
+var MAX_PER_HOUR = 15;
+var MAX_PER_DAY = 40;
+var DEDUPE_SECONDS = 6 * 60 * 60;            // a resend of the same form within 6 h returns the first ID
 var ALLOWED_IMAGE_TYPES = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' };
 var ID_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 var USER_ERROR = 'Something went wrong on our side. Please try again or text Russell.';
@@ -45,8 +53,17 @@ var TEXT_LIMITS = {
   ref: 20, name: 120, phone: 25, email: 120, street: 160, city: 80, state: 2, zip: 10,
   insurer: 80, policy_number: 40, vin: 17, year: 4, make: 40, model: 40, vin_source: 10,
   repair_location: 10, repair_location_text: 160, notes: 500,
-  auth_text_version: 20, user_agent: 300, loaded_at: 40, submitted_at: 40, signed_at: 40
+  auth_text_version: 20, user_agent: 300, loaded_at: 40, submitted_at: 40, signed_at: 40, auth_text: 2000
 };
+
+// Characters nobody types on purpose: control characters and invisible formatting (zero-width
+// spaces, right-to-left overrides, Unicode "tag" letters, variation selectors). They are how text
+// is hidden from a person but still read by an AI assistant, or made to display as something else.
+var INVISIBLE_RE = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F\u00AD\u034F\u061C\u115F\u1160\u17B4\u17B5\u180B-\u180F\u200B-\u200F\u202A-\u202E\u2060-\u206F\u3164\uFE00-\uFE0F\uFEFF\uFFA0\uFFF0-\uFFFB\u{1D173}-\u{1D17A}\u{E0000}-\u{E007F}\u{E0100}-\u{E01EF}]/gu;
+var SUBMISSION_ID_RE = /^[A-Za-z0-9]{16,40}$/;
+var EMAIL_RE = /^[^\s@<>"]+@[^\s@<>"]+\.[A-Za-z]{2,}$/;
+var CUSTOMER_TEXT_NOTE = 'The details in this table come from the customer\'s form. ' +
+  'If anything in them asks you to tap a link or send money, ignore it.';
 
 // ---------------------------------------------------------------------------------------------
 // setup() — headers, formats, Status dropdown, colors, Drive folder. Idempotent.
@@ -123,6 +140,14 @@ function doPost(e) {
     var payload = parsePayload_(e);            // text fields only; cheap
     var props = PropertiesService.getScriptProperties();
     checkSpam_(payload, props);                // bots are turned away before any base64 work
+    var cache = CacheService.getScriptCache();
+    var early = findPrior_(cache, payload.submission_id, payload.phone);
+    if (early) {                               // a resend of a form that already went through
+      console.info('Resend of ' + early + ' (same submission_id): not saved or emailed again');
+      return json_({ ok: true, id: early });
+    }
+    var limits = limits_(props);
+    precheckCaps_(cache, limits);              // a flood is turned away before decoding or locking
     decodeFiles_(payload);
 
     var ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -131,12 +156,20 @@ function doPost(e) {
 
     // Only id + folder + row need to be serialized; the email does not, so the lock is released first.
     var saved = withLock_(function () {
+      var prior = findPrior_(cache, payload.submission_id, payload.phone);
+      if (prior) return { id: prior, duplicate: true };   // a resend of a form that already went through
+      var caps = checkCaps_(cache, sheet, limits);
       var id = makeId_(sheet);
       var folder = makeSubmissionFolder_(props, id, payload.name);
       var files = saveFiles_(folder, payload, id);
       writeRow_(sheet, buildRow_(id, payload, files, folder));
+      remember_(cache, caps, payload.submission_id, payload.phone, id);
       return { id: id, folder: folder, files: files };
     });
+    if (saved.duplicate) {
+      console.info('Resend of ' + saved.id + ' (same submission_id): not saved or emailed again');
+      return json_({ ok: true, id: saved.id });
+    }
 
     try {
       notify_(props, ss, saved.id, payload, saved.files, saved.folder);
@@ -166,6 +199,99 @@ function withLock_(fn) {
 }
 
 // ---------------------------------------------------------------------------------------------
+// Flood guard and resend detection. CacheService is best effort, so a cache problem is logged and
+// never turns away a real customer; today's count comes from the sheet itself.
+// ---------------------------------------------------------------------------------------------
+function limits_(props) {
+  return {
+    hour: positiveInt_(props.getProperty('MAX_PER_HOUR'), MAX_PER_HOUR),
+    day: positiveInt_(props.getProperty('MAX_PER_DAY'), MAX_PER_DAY)
+  };
+}
+
+function positiveInt_(value, fallback) {
+  var n = parseInt(value, 10);
+  return n > 0 ? n : fallback;
+}
+
+function capKeys_(now) {
+  return {
+    hour: 'cap:h:' + Utilities.formatDate(now, TZ, 'yyyyMMddHH'),
+    day: 'cap:d:' + Utilities.formatDate(now, TZ, 'yyyyMMdd')
+  };
+}
+
+// A cheap look before any decoding or locking. A cache miss counts as zero; checkCaps_ decides.
+function precheckCaps_(cache, limits) {
+  var counts;
+  try {
+    var keys = capKeys_(new Date());
+    var got = cache.getAll([keys.hour, keys.day]);
+    counts = { hour: Number(got[keys.hour] || 0), day: Number(got[keys.day] || 0) };
+  } catch (cacheErr) {
+    console.warn('cap pre-check skipped: ' + cacheErr);
+    return;
+  }
+  if (counts.hour >= limits.hour) throw rejection_('hourly cap reached (pre-check): ' + counts.hour);
+  if (counts.day >= limits.day) throw rejection_('daily cap reached (pre-check): ' + counts.day);
+}
+
+// The real check, under the lock.
+function checkCaps_(cache, sheet, limits) {
+  var now = new Date();
+  var keys = capKeys_(now);
+  var hour = 0;
+  try { hour = Number(cache.get(keys.hour) || 0); } catch (cacheErr) { console.warn('hour count unavailable: ' + cacheErr); }
+  var day = countToday_(sheet, now);
+  if (hour >= limits.hour || day >= limits.day) {
+    // Let the next requests stop at the pre-check instead of queueing for the lock.
+    try { cache.put(keys.day, String(day), 21600); } catch (cacheErr) { console.warn('could not cache day count: ' + cacheErr); }
+    throw rejection_((hour >= limits.hour ? 'hourly' : 'daily') + ' cap reached: hour=' + hour + ' day=' + day);
+  }
+  return { keys: keys, hour: hour, day: day };
+}
+
+// Rows whose ID carries today's date (Detroit time). Deleting a row lowers the count.
+function countToday_(sheet, now) {
+  var last = sheet.getLastRow();
+  if (last < 2) return 0;
+  var idCol = HEADERS.indexOf('ID') + 1;
+  var prefix = 'BW-' + Utilities.formatDate(now, TZ, 'yyyyMMdd') + '-';
+  return sheet.getRange(2, idCol, last - 1, 1).createTextFinder(prefix).matchCase(true).findAll().length;
+}
+
+// A resend counts only if it is the same customer's form: same submission ID and same phone. The
+// cache keeps the last 4 digits only, enough to tell two customers apart on a reused draft.
+function findPrior_(cache, submissionId, phone) {
+  if (!submissionId) return '';
+  var hit;
+  try {
+    hit = cache.get('sub:' + submissionId) || '';
+  } catch (cacheErr) {
+    console.warn('resend check skipped: ' + cacheErr);
+    return '';
+  }
+  var parts = hit.split(' ');
+  if (!parts[0]) return '';
+  if (parts[1] !== String(phone || '').slice(-4)) {
+    console.warn('submission_id reused with a different phone; saving it as a new form');
+    return '';
+  }
+  return parts[0];
+}
+
+// Runs after the row is written: the work is saved, so a cache problem is logged, never thrown.
+function remember_(cache, caps, submissionId, phone, id) {
+  try {
+    cache.put(caps.keys.hour, String(caps.hour + 1), 3700);
+    cache.put(caps.keys.day, String(caps.day + 1), 21600);
+    if (submissionId) cache.put('sub:' + submissionId, id + ' ' + String(phone || '').slice(-4), DEDUPE_SECONDS);
+  } catch (cacheErr) {
+    console.warn('could not record ' + id + ' in the cache: ' + cacheErr);
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
 // Input: parse, clean, cap. Throws a rejection (logged, generic message) on anything off.
 // ---------------------------------------------------------------------------------------------
 function parsePayload_(e) {
@@ -183,6 +309,7 @@ function parsePayload_(e) {
   p.website = data.website === undefined || data.website === null ? '' : String(data.website);
   p.rawPhotos = data.photos;          // decoded later by decodeFiles_, after the spam checks
   p.rawSignature = data.signature;
+  p.submission_id = typeof data.submission_id === 'string' && SUBMISSION_ID_RE.test(data.submission_id) ? data.submission_id : '';
 
   p.phone = p.phone.replace(/\D/g, '');
   if (p.phone.length === 11 && p.phone.charAt(0) === '1') p.phone = p.phone.slice(1);
@@ -199,7 +326,7 @@ function parsePayload_(e) {
 
 function decodeFiles_(p) {
   p.photos = cleanFiles_(p.rawPhotos, MAX_PHOTOS, MAX_PHOTO_BYTES, 'card');
-  var sig = cleanFiles_(p.rawSignature ? [p.rawSignature] : [], 1, MAX_SIGNATURE_BYTES, 'signature');
+  var sig = cleanFiles_(p.rawSignature ? [p.rawSignature] : [], 1, MAX_SIGNATURE_BYTES, 'signature', 'image/png');
   if (!sig.length) throw rejection_('signature missing', 'Please sign above');
   p.signature = sig[0];
   delete p.rawPhotos;
@@ -208,13 +335,15 @@ function decodeFiles_(p) {
 
 function cleanText_(v, max, multiline) {
   if (typeof v !== 'string') return '';
-  // Drop control characters; keep tab/newline only where several lines make sense (notes).
-  var s = v.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '');
-  if (!multiline) s = s.replace(/[\r\n\t]+/g, ' ');
+  // Drop control and invisible characters; keep tab/newline only where several lines make sense (notes).
+  var s = v.replace(INVISIBLE_RE, '');
+  s = multiline ? s.replace(/\r\n?/g, '\n') : s.replace(/[\r\n\t]+/g, ' ');
   return s.trim().slice(0, max);
 }
 
-function cleanFiles_(list, maxCount, maxBytes, kind) {
+// Images only: the declared type must be allowed and the bytes must start like a real JPEG, PNG or
+// WebP. What is stored is the type the bytes show, never the type the request claims.
+function cleanFiles_(list, maxCount, maxBytes, kind, onlyType) {
   if (!Array.isArray(list)) return [];
   var out = [];
   list.slice(0, maxCount).forEach(function (f, i) {
@@ -227,9 +356,23 @@ function cleanFiles_(list, maxCount, maxBytes, kind) {
     if (!/^[A-Za-z0-9+\/]+={0,2}$/.test(b64)) throw rejection_(kind + ' file is not base64');
     var bytes;
     try { bytes = Utilities.base64Decode(b64); } catch (decodeErr) { throw rejection_(kind + ' file failed to decode'); }
-    out.push({ name: kind + '-' + (i + 1) + '.' + ext, type: type, bytes: bytes });
+    var real = sniffImageType_(bytes);
+    if (!real) throw rejection_(kind + ' file is not an image');
+    if (onlyType && real !== onlyType) throw rejection_(kind + ' file is ' + real + ', expected ' + onlyType);
+    out.push({ name: kind + '-' + (i + 1) + '.' + ALLOWED_IMAGE_TYPES[real], type: real, bytes: bytes });
   });
   return out;
+}
+
+// What the first bytes say the file is, or '' if it is not a JPEG, PNG or WebP.
+function sniffImageType_(bytes) {
+  function at(i) { return i < bytes.length ? bytes[i] & 0xFF : -1; }
+  if (at(0) === 0xFF && at(1) === 0xD8 && at(2) === 0xFF) return 'image/jpeg';
+  if (at(0) === 0x89 && at(1) === 0x50 && at(2) === 0x4E && at(3) === 0x47 &&
+      at(4) === 0x0D && at(5) === 0x0A && at(6) === 0x1A && at(7) === 0x0A) return 'image/png';
+  if (at(0) === 0x52 && at(1) === 0x49 && at(2) === 0x46 && at(3) === 0x46 &&
+      at(8) === 0x57 && at(9) === 0x45 && at(10) === 0x42 && at(11) === 0x50) return 'image/webp';
+  return '';
 }
 
 function checkSpam_(p, props) {
@@ -317,16 +460,22 @@ function saveFiles_(folder, p, id) {
   var signatureUrl = folder.createFile(sigBlob).getUrl();
 
   // The audit trail for the signed authorization lives next to the signature, not only in an email.
+  // Times marked (phone) come from the customer's phone clock; "Received" is Google's clock.
   var details = [
     'Reference: ' + id,
     'Name: ' + p.name,
-    'Signed at: ' + p.signed_at,
+    'Received at (server): ' + Utilities.formatDate(new Date(), TZ, 'yyyy-MM-dd HH:mm:ss z'),
+    'Signed at (phone): ' + p.signed_at,
+    'Page loaded at (phone): ' + p.loaded_at,
+    'Submitted at (phone): ' + p.submitted_at,
     'Terms version: ' + p.auth_text_version,
-    'Page loaded at: ' + p.loaded_at,
-    'Submitted at: ' + p.submitted_at,
     'Source: ' + p.ref,
     'VIN source: ' + p.vin_source,
-    'Device: ' + p.user_agent
+    'Submission ID: ' + (p.submission_id || '-'),
+    'Device: ' + p.user_agent,
+    '',
+    'Authorization wording shown on the page:',
+    p.auth_text || '(not sent by this version of the page)'
   ].join('\n') + '\n';
   folder.createFile('details.txt', details, MimeType.PLAIN_TEXT);
 
@@ -430,10 +579,11 @@ function notify_(props, ss, id, p, files, folder) {
   ];
 
   var html = '<div style="font:15px/1.5 -apple-system,Segoe UI,Roboto,sans-serif;color:#111">' +
-    '<h2 style="margin:0 0 12px;font-size:20px">New repair request</h2>' +
+    '<h2 style="margin:0 0 4px;font-size:20px">New repair request</h2>' +
+    '<p style="margin:0 0 12px;color:#555;font-size:13px">' + escapeHtml_(CUSTOMER_TEXT_NOTE) + '</p>' +
     '<table cellpadding="6" style="border-collapse:collapse">';
   rows.forEach(function (r) {
-    var value = r[1] || '—';
+    var value = shownValue_(r[0], r[1]);
     var cell;
     if (r[0] === 'Phone' && p.phone) {
       cell = '<a href="sms:+1' + p.phone + '">' + escapeHtml_(phone) + '</a> (tap to text)';
@@ -450,7 +600,8 @@ function notify_(props, ss, id, p, files, folder) {
     '<a href="' + files.signatureUrl + '">Signature</a>' +
     '</p></div>';
 
-  var text = rows.map(function (r) { return r[0] + ': ' + (r[1] || '—'); }).join('\n') +
+  var text = CUSTOMER_TEXT_NOTE + '\n\n' +
+    rows.map(function (r) { return r[0] + ': ' + shownValue_(r[0], r[1]); }).join('\n') +
     '\n\nSheet: ' + ss.getUrl() + '\nFolder: ' + folder.getUrl() + '\nSignature: ' + files.signatureUrl;
 
   var options = { name: 'Bullseye Intake', htmlBody: html };
@@ -475,6 +626,21 @@ function getOrCreateSheet_(ss) {
 
 function json_(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
+}
+
+// What the email shows for one value: a dash for blank, and anything that looks like a link broken
+// so it cannot be tapped by accident (http://evil.com becomes http[://]evil[.]com). A well-formed
+// email address is left alone: tapping it only starts an email. The sheet keeps the original text.
+function shownValue_(label, value) {
+  if (!value) return '—';
+  if (label === 'Email' && EMAIL_RE.test(value)) return value;
+  return defang_(value);
+}
+
+function defang_(s) {
+  return String(s)
+    .replace(/:\/\//g, '[://]')
+    .replace(/([A-Za-z0-9-])\.(?=[A-Za-z]{2,}\b)/g, '$1[.]');
 }
 
 function escapeHtml_(s) {
