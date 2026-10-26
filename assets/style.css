@@ -79,6 +79,9 @@ h2 { font-size: 20px; margin: 0 0 14px; display: flex; align-items: center; gap:
   background: var(--yellow); color: #111; font-size: 16px; font-weight: 800;
 }
 .field { margin: 0 0 16px; }
+/* These two were inline in index.html; the page's security policy forbids inline styles. */
+fieldset.bare { border: 0; padding: 0; min-width: 0; }
+#loc-other-wrap { margin-top: 12px; }
 label, .label { display: block; font-weight: 600; margin-bottom: 6px; }
 .req { font-weight: 500; color: var(--muted); font-size: 14px; margin-left: 6px; }
 

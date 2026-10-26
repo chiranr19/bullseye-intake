@@ -24,6 +24,7 @@
     vinLooking: 'Looking up your vehicle…',
     vinFound: function (ymm) { return '✓ ' + ymm; },
     vinNotRight: 'not right?',
+    vinNotFound: "Couldn't look that up. Type the year, make and model below.",
     sending: 'Sending…',
     sendingPhoto: 'Sending photo…',
     send: 'Send to Russell',
@@ -51,7 +52,9 @@
   var PHONE_DIGITS = 10;
   var MAX_PHOTOS = 2;
   var PHOTO_TARGET_BYTES = 300 * 1024;
-  var PHOTO_STEPS = [[1600, 0.75], [1600, 0.6], [1280, 0.6]]; // [long edge px, JPEG quality]
+  // [long edge px, JPEG quality], tried in order until the photo is <= 300 KB. The last two steps only
+  // run for unusually noisy photos; they keep every photo well under the server's 600 KB ceiling.
+  var PHOTO_STEPS = [[1600, 0.75], [1600, 0.6], [1280, 0.6], [1024, 0.5], [800, 0.5]];
   var DECODE_WAIT_MS = 1500;             // longest we wait for img.decode() before drawing anyway
   var PHOTO_WAIT_MS = 20000;             // longest Send waits for a photo still shrinking (photos are optional)
   var VIN_RE = /^[A-HJ-NPR-Z0-9]{17}$/;
@@ -69,6 +72,10 @@
   var ID_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   var DRAFT_FIELDS = ['name', 'phone', 'email', 'street', 'city', 'state', 'zip', 'insurer', 'policy_number',
                       'vin', 'year', 'make', 'model', 'repair_location', 'repair_location_text', 'notes'];
+  var DRAFT_MAX_AGE_MS = 24 * 60 * 60 * 1000;      // a customer's own phone: pick up where they left off
+  var DRAFT_MAX_AGE_SHARED_MS = 15 * 60 * 1000;    // Russell's phone is handed from customer to customer
+  var SHARED_DEVICE_REF = 'russell';               // ?ref=russell is the link Russell opens on his own phone
+  var SUBMISSION_ID_RE = /^[A-Za-z0-9]{16,40}$/;
 
   // ---- State ----------------------------------------------------------------------------
   var state = {
@@ -83,8 +90,10 @@
     sigWidth: 0,
     signedAt: null,        // Date of the last signature stroke
     submitting: false,
+    sent: false,           // true once the server confirmed; nothing may save a draft after that
     failures: 0,
-    photoTimer: null
+    photoTimer: null,
+    submissionId: ''       // random per form fill; the same on a retry, so the server can spot a repeat
   };
 
   var el = {};
@@ -149,9 +158,15 @@
   // ---- Ref tag (?ref=flyer|truck|text|web|russell → else "direct") -----------------------
   function refFromUrl() {
     var raw = '';
-    try { raw = (new URLSearchParams(window.location.search).get('ref') || '').trim().toLowerCase(); } catch (e) { raw = ''; }
+    try { raw = new URLSearchParams(window.location.search).get('ref') || ''; } catch (e) { raw = ''; }
+    return allowedRef(raw);
+  }
+
+  // Only the sources listed in config.js count; anything else (a typo, a tampered link or draft) is ''.
+  function allowedRef(value) {
+    var v = typeof value === 'string' ? value.trim().toLowerCase() : '';
     var allowed = Array.isArray(CONFIG.REF_SOURCES) ? CONFIG.REF_SOURCES : [];
-    return allowed.indexOf(raw) !== -1 ? raw : '';
+    return allowed.indexOf(v) !== -1 ? v : '';
   }
 
   function setRef(value) {
@@ -260,8 +275,8 @@
   }
 
   // Draw the photo to a canvas at ≤ 1600px on the long edge and re-encode as JPEG, stepping
-  // down quality (and once, size) until it is ≤ 300 KB. Modern browsers honor EXIF orientation
-  // when drawing an <img>, so portrait shots come out upright.
+  // down quality and size (PHOTO_STEPS) until it is ≤ 300 KB. Modern browsers honor EXIF
+  // orientation when drawing an <img>, so portrait shots come out upright.
   function compressImage(file) {
     return loadImage(file).then(function (img) {
       var canvas = document.createElement('canvas');
@@ -356,7 +371,7 @@
   function decodeVin(vin) {
     cancelVinRequest();
     if (typeof window.fetch !== 'function' || typeof window.AbortController !== 'function') {
-      setVinStatus('');
+      setVinStatus(COPY.vinNotFound, 'muted');
       showManualFields(false);
       return;
     }
@@ -364,17 +379,19 @@
     state.vinRequest = ctrl;
     var timer = setTimeout(function () { ctrl.abort(); }, VIN_TIMEOUT_MS);
 
-    fetch(NHTSA_URL + encodeURIComponent(vin) + '?format=json', { signal: ctrl.signal })
+    // No cookies and no referrer: NHTSA learns the VIN and nothing else about the customer.
+    fetch(NHTSA_URL + encodeURIComponent(vin) + '?format=json',
+      { signal: ctrl.signal, credentials: 'omit', referrerPolicy: 'no-referrer' })
       .then(function (res) {
         if (!res.ok) throw new Error('HTTP ' + res.status);
         return res.json();
       })
       .then(function (data) {
         var r = (data && data.Results && data.Results[0]) || {};
-        var year = clean(r.ModelYear);
-        var make = titleCaseMake(clean(r.Make));
-        var model = clean(r.Model);
-        if (!year || !make || !model) throw new Error('incomplete decode');
+        var year = apiText(r.ModelYear, 4);
+        var make = titleCaseMake(apiText(r.Make, 40));
+        var model = apiText(r.Model, 40);
+        if (!/^(19|20)\d{2}$/.test(year) || !make || !model) throw new Error('incomplete decode');
         if (el.vin.value !== vin) return;
         applyDecoded({ year: year, make: make, model: model });
       })
@@ -382,8 +399,8 @@
         if (state.vinRequest !== ctrl) return;        // superseded by a newer keystroke
         if (el.vin.value !== vin) return;
         console.info('VIN decode unavailable:', err && err.message);
-        setVinStatus('');
-        showManualFields(false);                       // quietly: no error, no focus jump
+        setVinStatus(COPY.vinNotFound, 'muted');       // a hint, not an error: typing the car is fine
+        showManualFields(false);                       // no focus jump
       })
       .then(function () {
         clearTimeout(timer);
@@ -481,7 +498,11 @@
       el.fallback.hidden = false;
       return;
     }
-    state.sigPad = new window.SignaturePad(el.sig, { penColor: '#000', minWidth: 1, maxWidth: 2.5, throttle: 8 });
+    // White, not transparent: a transparent PNG shows black ink on black in dark viewers (Drive's
+    // preview, a phone in dark mode), and the signature looks blank.
+    state.sigPad = new window.SignaturePad(el.sig, {
+      penColor: '#000', backgroundColor: 'rgb(255,255,255)', minWidth: 1, maxWidth: 2.5, throttle: 8
+    });
     resizeSignature();
     window.addEventListener('resize', debounce(resizeSignature, 150));
     window.addEventListener('orientationchange', function () { setTimeout(resizeSignature, 300); });
@@ -526,8 +547,10 @@
   function initDrafts() {
     var urlRef = refFromUrl();
     var draft = loadDraft();
+    if (draft && draftExpired(draft, urlRef)) { clearDraft(); draft = null; }
+    state.submissionId = draft && SUBMISSION_ID_RE.test(String(draft.sid || '')) ? draft.sid : newSubmissionId();
     var restored = draft ? restoreDraft(draft) : false;
-    setRef(urlRef || (draft && draft.ref) || 'direct');
+    setRef(urlRef || allowedRef(draft && draft.ref) || 'direct');
     if (restored) {
       el.draftBanner.hidden = false;
       saveDraft(); // re-save so the settled ref is recorded
@@ -554,13 +577,14 @@
   }
 
   function saveDraft() {
+    if (state.sent) return;   // a save still waiting on its debounce must not undo clearDraft()
+    // The signature is never saved: whoever sends the form signs it, in this sitting.
     var data = {
-      v: 1,
+      v: 2,
       ref: state.ref,
+      sid: state.submissionId,
       fields: readForm(),
       vin_decoded: state.vinDecoded,
-      sig: signatureEmpty() ? null : state.sigPad.toData(),
-      signed_at: state.signedAt ? isoWithOffset(state.signedAt) : null,
       saved_at: isoWithOffset(new Date())
     };
     try {
@@ -585,6 +609,16 @@
     try { window.localStorage.removeItem(DRAFT_KEY); } catch (e) { /* nothing to clear */ }
   }
 
+  // Drafts hold a customer's details, so they do not live forever: a day on a customer's own phone,
+  // 15 minutes on Russell's phone, where the next person holding it is a different customer.
+  function draftExpired(d, urlRef) {
+    var saved = Date.parse(d.saved_at);
+    if (isNaN(saved)) return true;
+    var shared = urlRef === SHARED_DEVICE_REF || d.ref === SHARED_DEVICE_REF;
+    var age = Date.now() - saved;
+    return age > (shared ? DRAFT_MAX_AGE_SHARED_MS : DRAFT_MAX_AGE_MS) || age < -5 * 60 * 1000;
+  }
+
   function restoreDraft(d) {
     var any = false;
     DRAFT_FIELDS.forEach(function (name) {
@@ -605,16 +639,6 @@
         if (input) { input.value = v; any = true; }
       }
     });
-    if (d.sig && Array.isArray(d.sig) && d.sig.length && state.sigPad) {
-      try {
-        state.sigPad.fromData(d.sig);
-        state.signedAt = d.signed_at ? new Date(d.signed_at) : new Date();
-        if (isNaN(state.signedAt.getTime())) state.signedAt = new Date();
-        any = true;
-      } catch (e) {
-        state.sigPad.clear();
-      }
-    }
     syncRepairLocation();
     var dec = d.vin_decoded;
     var decValid = dec && typeof dec === 'object' &&
@@ -632,6 +656,7 @@
 
   function startOver() {
     clearDraft();
+    state.submissionId = newSubmissionId();
     el.intake.reset();
     state.photos = [];
     renderPhotos();
@@ -745,6 +770,8 @@
       repair_location_text: f.repair_location === 'other' ? f.repair_location_text : '',
       notes: f.notes,
       auth_text_version: String(CONFIG.AUTH_TEXT_VERSION || ''),
+      auth_text: String(CONFIG.AUTH_TEXT || ''),        // filed with the signature: the wording they saw
+      submission_id: state.submissionId,                // the same on a retry, so a retry is never a second job
       signed_at: isoWithOffset(signedAt),
       user_agent: String(navigator.userAgent || ''),
       photos: state.photos.map(function (p, i) {
@@ -775,6 +802,9 @@
       body: JSON.stringify(payload),
       headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // simple request → no CORS preflight
       redirect: 'follow',                                        // Apps Script 302s to googleusercontent.com
+      credentials: 'omit',                                       // no cookies: the backend needs none
+      referrerPolicy: 'no-referrer',
+      cache: 'no-store',
       signal: ctrl.signal
     }).then(function (res) {
       if (!res.ok) throw new Error('HTTP ' + res.status);
@@ -838,6 +868,7 @@
 
   // ---- Thank-you state ------------------------------------------------------------------------
   function onSendSuccess(result) {
+    state.sent = true;
     clearDraft();
     var f = readForm();
     var car = vehicleLabel(f);
@@ -961,7 +992,23 @@
     if (text === undefined || text === null) return;
     each(document.querySelectorAll(selector), function (n) { n.textContent = String(text); });
   }
-  function clean(v) { return typeof v === 'string' ? v.trim() : ''; }
+  // Text from an outside service: strings only, no control characters, capped.
+  function apiText(v, max) {
+    return typeof v === 'string' ? v.replace(/[\u0000-\u001F\u007F-\u009F]/g, '').trim().slice(0, max) : '';
+  }
+
+  function newSubmissionId() {
+    var chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    var bytes = new Uint8Array(24);
+    if (window.crypto && typeof window.crypto.getRandomValues === 'function') {
+      window.crypto.getRandomValues(bytes);
+    } else {
+      for (var i = 0; i < bytes.length; i++) bytes[i] = Math.floor(Math.random() * 256);
+    }
+    var out = '';
+    for (var j = 0; j < bytes.length; j++) out += chars.charAt(bytes[j] % chars.length);
+    return out;
+  }
   function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
 
   function debounce(fn, ms) {
