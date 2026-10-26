@@ -72,7 +72,14 @@ Desktop pane at phone size, on the live site and on a local copy:
 - **Backend:** `node tests/backend.test.js` passes 18/18. Five deliberate breakages of `Code.gs`
   (no resend check, no link-breaking, trusting any file, no invisible-character stripping, no daily
   cap) each make at least one test fail.
-- **Not yet:** the backend's new behaviour live. Version 3 is written and tested but not published.
+- **Backend version 3 live (published 2026-10-26):** the editor's copy matched the repo file byte for
+  byte (SHA-256) before publishing, and `setup()` asked for no new permissions. Six refusal probes
+  (wrong secret, honeypot, a 1-second send, not JSON, a fake photo, a JPEG posing as the signature)
+  were all refused with no row; the last two are new in version 3. One real send from the live page
+  (`BW-20261026-SENU`) made one row, one folder and one email. Replaying the identical request
+  returned the same reference with no second row or email. The email carried the customer-typed
+  warning and showed the note's link as `http[://]example[.]com/pay`; a zero-width character typed
+  into the note never reached it. `details.txt` had Google's receive time and the exact wording.
 
 ## How to run the phone rows
 
