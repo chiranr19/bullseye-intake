@@ -11,8 +11,8 @@ window.CONFIG = {
   OWNER_PHONE_E164: "+18103471796",     // from the flyer; text only
   OWNER_PHONE_DISPLAY: "(810) 347-1796",
 
-  APPS_SCRIPT_URL: "PLACEHOLDER_APPS_SCRIPT_EXEC_URL",   // set after deploy (apps-script/DEPLOY.md)
-  FORM_SECRET: "PLACEHOLDER_RANDOM_STRING",              // same value as the Script Property.
+  APPS_SCRIPT_URL: "https://script.google.com/macros/s/AKfycbwzwHApUc_9qEKFzvgPSJMtWO1XddIxmxQ1k_ZaDeN4b-iQQbJ9KkJ39FSf-Whn6KZC/exec",   // set after deploy (apps-script/DEPLOY.md)
+  FORM_SECRET: "9HqSWe9wdFUNsL1hEuPyW_JirxISGQOT",              // same value as the Script Property.
                                                          // Light anti-spam only — it is visible in the
                                                          // page source and is NOT a security boundary.
 
@@ -20,7 +20,7 @@ window.CONFIG = {
   //   true    → fake a 1.5 s success (no network call)
   //   "fail"  → fake a network failure every time (to test the Retry / "Text Russell" fallback)
   //   false   → really POST to APPS_SCRIPT_URL  ← set this once the real URL is in
-  MOCK_SUBMIT: true,
+  MOCK_SUBMIT: false,
 
   AUTH_TEXT_VERSION: "v1",
   // PLACEHOLDER — replace with the exact sentence(s) from Russell's current paper form.
