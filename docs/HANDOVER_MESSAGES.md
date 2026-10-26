@@ -5,9 +5,9 @@ answers, and a 15-minute call or a stop at the truck. Edit freely; these are dra
 
 ## 1. The text (send this first)
 
-> Hi Russell, it's Chiran. I built Bullseye a free digital version of your customer form. Customers
-> fill in their info, snap their insurance card and sign on their phone, and you get an email with
-> everything.
+> Hi Russell, it's Chiran. You fixed my windshield on Sunday, thanks again! I built Bullseye a free
+> digital version of your customer form. Customers fill in their info, snap their insurance card and
+> sign on their phone, and you get an email with everything.
 >
 > Try the form yourself: https://chiranr19.github.io/bullseye-intake/?ref=russell
 > How it works, in 2 minutes: https://chiranr19.github.io/bullseye-intake/guide.html
