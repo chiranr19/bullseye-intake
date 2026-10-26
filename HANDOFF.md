@@ -1,41 +1,38 @@
 # HANDOFF — Bullseye Intake
 
-**STATUS:** The pilot is live end to end (2026-10-25): page on GitHub Pages, backend in Chiran's Gmail, two live test submissions verified in the Sheet, Drive and email. What remains needs a real phone or Russell.
-**WHAT:** Static intake form (`index.html`, `assets/`), Apps Script backend (`apps-script/`, live as deployment version 2), QR codes (`qr/`), docs (`docs/`, `README.md`, `DECISIONS.md`, `GOTCHAS.md`). `config.js` carries the live `/exec` URL and the secret; `MOCK_SUBMIT` is `false`.
-**NEXT:** (1) delete the two test rows `BW-20261025-ZKX4` and `BW-20261025-CYGH` and their Drive folders, or set their Status to Cancelled; (2) run the phone rows of `docs/TESTING.md` on an iPhone and an Android; (3) replace `AUTH_TEXT` in `config.js` with the wording from Russell's paper form; (4) when Russell is ready, repeat `apps-script/DEPLOY.md` in his account and change the two `config.js` values.
+**STATUS:** The page hardening is live (2026-10-26). Backend version 3 (flood guard, resend detection, file checks, safer email, fuller audit record) is written, tested 18/18 and pushed to the repo, but not yet published in Apps Script: Chrome was not connected to the session.
+**WHAT:** Static form on GitHub Pages plus the Apps Script backend in Chiran's Google account (pilot). `SECURITY.md` lists the protections; `tests/backend.test.js` proves the backend.
+**NEXT:** (1) publish `Code.gs` as version 3 (paste, Save, run `setup()`, Deploy, Manage deployments, New version); (2) one live test submission, then push the held commit that adds the guide's new safety lines; (3) delete the test rows; (4) turn on two-step sign-in for GitHub and Google; (5) settle the page's permanent address before printing QR codes; (6) send Russell the text in `docs/HANDOVER_MESSAGES.md`.
 
 ## Where things stand
 
 | Piece | State |
 |---|---|
-| Form page | Live at `https://chiranr19.github.io/bullseye-intake/`. Verified at 375×812 in the desktop pane; not yet on a real phone. |
-| Backend | Script project "Bullseye Intake" bound to the Sheet "Bullseye Customers" in `chiranr19@gmail.com`. Deployment version 2. Script Properties `FORM_SECRET` and `NOTIFY_EMAIL` set; no CC. |
-| Verified live | Health check; wrong secret, honeypot, too-fast and non-JSON requests rejected; two submissions produced the Sheet row, the Drive folder (`card-1.jpg`, `signature.png`, `details.txt`) and the email with the photo attached and working links; leading-zero ZIP and 20-digit policy number stored as text; `=`-leading text stays text; Submitted shows Detroit time. |
-| QR codes | Point at the live URL. Decode-verified. |
-| Handover to Russell | `guide.html` (visual, plain-English, live at `/guide.html`) and `docs/HANDOVER_MESSAGES.md` (first text, email, 15-minute call plan). Not sent yet. |
-| Git | `origin` = `https://github.com/chiranr19/bullseye-intake` (public). Pages builds `main` root, HTTPS enforced. |
+| Form page | Live at `https://chiranr19.github.io/bullseye-intake/` with the hardening: security policy, white signature, VIN hint, draft expiry, resend ID. Works with backend version 2 or 3. |
+| Backend | Live: version 2. Repo: version 3, tested, waiting to be published. |
+| Guide for Russell | The live guide predates version 3. A local commit adds the new safety lines; push it only after version 3 is published, because those lines describe version 3. |
+| Test rows | `BW-20261025-ZKX4` and `BW-20261025-CYGH`, unless already deleted. |
+| Git | `origin` is `github.com/chiranr19/bullseye-intake` (public); Pages serves `main`, HTTPS enforced. |
 
-## Found during the live test
+## Moving the page to an address named for the business
 
-`setup()` formatted the columns with open-ended ranges (`'A2:A'`, `'B2:V'`) and those formats silently
-never applied, so the first row stored ZIP `48503` as a number. Fixed by formatting each row right
-before writing it (`writeRow_`) and by using bounded ranges in `setup()`, which now logs the formats
-it reads back. Published as version 2 and re-tested. Details in `GOTCHAS.md`.
+QR codes hold the address, so settle it before printing. README "Moving the page" has the steps and
+the redirect to leave behind so nothing already shared breaks.
 
 ## Not verified yet (needs a phone)
 
-- Contact autofill on iOS/Android; camera capture; EXIF rotation of a real portrait photo; HEIC.
-- `sms:` links opening Messages with the body; vCard behavior on iOS; signature crispness at 3×.
+- Contact autofill, camera capture, HEIC, `sms:` links, the vCard on iOS, signature crispness at 3x.
+- Backend version 3 live (only tested with fakes so far).
 
 ## Risks and notes
 
-- `FORM_SECRET` is visible in the page source by design (brief §7). It is spam friction, not security.
-- A phone may keep the old `config.js` for up to 10 minutes after a push (`Cache-Control: max-age=600`).
-- A consumer Gmail account sends at most 100 emails per day through Apps Script.
-- Any change to `apps-script/Code.gs` must be pasted into the script project and published as a new
-  deployment version (same URL). Saving alone changes nothing live.
+- `FORM_SECRET` is public by design; the flood guard is the real limit once version 3 is live.
+- Any change to `Code.gs` must be pasted and published as a new version; run the tests first.
+- A phone may keep the old `config.js` for up to 10 minutes after a push.
+- Tool calls can turn escape sequences into real characters on the way to disk (machine GOTCHAS);
+  the source-scan test catches it.
 
 ## How to resume
 
-Read `bullseye-master-brief.md` §8–§9 for the definition of done, `DECISIONS.md` for every choice
-made, `GOTCHAS.md` for the traps. Local run: `python -m http.server 8080`.
+Read `SECURITY.md`, `DECISIONS.md` (newest at the bottom) and `GOTCHAS.md`. Local run:
+`python -m http.server 8080`. Tests: `node tests/backend.test.js`.

@@ -28,6 +28,7 @@ Still in **Project Settings**, scroll to **Script Properties** → **Add script 
 | `FORM_SECRET` | Any random string. Make one with `python -c "import secrets; print(secrets.token_urlsafe(24))"`. You will put the same value in `config.js`. |
 | `NOTIFY_EMAIL` | The address that should get the "New repair" email (Russell's Gmail). |
 | `CC_EMAIL` | Optional. A second address copied on every email (Chiran, during the pilot). Leave it out to send to one address. |
+| `MAX_PER_HOUR`, `MAX_PER_DAY` | Optional. The flood guard: by default the form takes at most 15 forms an hour and 40 a day. Add these only to raise the limits; no redeploy needed. |
 
 Click **Save script properties**. `ROOT_FOLDER_ID` is written automatically by the next step.
 
@@ -79,6 +80,8 @@ Expect, within a few seconds:
 - an email `New repair: Name — vehicle — insurer` with the card photo attached and working links
 
 ## After any code change (the #1 gotcha)
+
+Before pasting a changed `Code.gs`, run `node tests/backend.test.js` on the laptop; every test must pass.
 
 Editing `Code.gs` does **not** change what is live. You must publish a new version:
 

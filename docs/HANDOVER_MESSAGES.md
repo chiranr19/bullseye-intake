@@ -1,22 +1,35 @@
 # Handing it to Russell — the messages
 
-Russell is text-only and not technical. Three touches: a text to open the door, an email with
-the links once he answers, and a short call or a visit to the truck. Edit freely; this is a draft.
+Russell is text-only and not technical. Three touches: a short text, an email with the links once he
+answers, and a 15-minute call or a stop at the truck. Edit freely; these are drafts.
 
-## 1. The first text
+## 1. The text (send this first)
 
-> Hey Russell, it's Chiran. I built something for Bullseye and I'd like to give it to you, free.
-> It's a digital version of your customer form. A customer scans a QR code or taps a link, fills
-> in their details and insurance card on their phone, signs with their finger, and you get an
-> email with everything.
+> Hi Russell, it's Chiran. I built Bullseye a free digital version of your customer form. Customers
+> scan a QR code or tap a link, fill in their info, snap their insurance card and sign on their phone.
+> You get an email with everything, and a spreadsheet tracks each job. 2-minute picture guide:
+> https://chiranr19.github.io/bullseye-intake/guide.html
 >
-> I'd like to show you how it works. Could you send me an email address, or tell me a good time
-> for a 15-minute call?
+> Can I show you how it works? Send me your email or a good time for a quick call.
 
-If he asks "what's the catch": *No catch. It runs on free Google tools. I wanted to build it and
-you were the right person to build it for.*
+If he asks "what's the catch": *No catch. It runs on free Google tools.*
 
-## 2. The email, once he replies
+## 2. The QR code photo (send once he has seen the guide)
+
+Attach `qr/russell.png` and add one line:
+
+> This is your QR code. Save it to your photos. At the car, show it on your screen and the customer
+> points their phone camera at it. The form opens on their phone.
+
+A texted photo of the code still scans: it was tested after shrinking to 180 pixels, heavy
+compression, blur and a tilt. Two limits:
+
+- A phone cannot scan a code shown on its own screen. To reach a customer by text, send the link
+  (`https://chiranr19.github.io/bullseye-intake/?ref=text`), not the picture.
+- The code holds today's address. If the page moves to its own address (README, "Moving the page"),
+  the old address must keep redirecting, or this saved photo stops working.
+
+## 3. The email, once he replies
 
 **Subject:** Your new customer form — how it works
 
@@ -46,7 +59,7 @@ you were the right person to build it for.*
 Attach `guide.html` from the repo if you want him to have a copy that works without the link.
 It is self-contained (the QR code is drawn inside the page).
 
-## 3. On the call or at the truck (15 minutes)
+## 4. On the call or at the truck (15 minutes)
 
 1. **Let him scan.** Hold up `qr/russell.png` on your phone. He fills in the form on his own phone
    and signs. Takes 90 seconds and makes everything below obvious.
@@ -58,8 +71,10 @@ It is self-contained (the QR code is drawn inside the page).
 
 Things he will ask, and the honest answers:
 
-- *What does it cost?* Nothing. Google's free tier covers about 100 emails a day.
-- *What if the customer has no signal?* The page saves what they typed; they can send later.
+- *What does it cost?* Nothing. Google's free tier covers about 100 emails a day, and the form stops
+  at 40 forms a day so a flood of fake ones can never use them up.
+- *What if the customer has no signal?* The page keeps what they typed; they sign and send later.
 - *What if they won't use a phone?* Paper, like today. Nothing depends on the form.
 - *Can I change the wording / add columns?* Yes. The columns right of Source are his.
-- *Who can see this?* Only him (and you, until it moves to his account).
+- *Who can see this?* Only him (and you, until it moves to his account). The guide's "Is it safe?"
+  part explains the rest in plain words.

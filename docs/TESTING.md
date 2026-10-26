@@ -50,6 +50,30 @@ The first submission found a real bug: the number formats from `setup()` had nev
 sets the formats on the row it writes, `setup()` uses bounded ranges and logs what it reads back),
 published as deployment version 2, re-tested with the second submission.
 
+## Hardening checks (2026-10-26)
+
+Desktop pane at phone size, on the live site and on a local copy:
+
+- **VIN:** lowercase is uppercased and decodes; I, O or Q is refused inline; a wrong check digit
+  warns and still decodes; an unknown VIN or a failed lookup now shows "Couldn't look that up. Type
+  the year, make and model below." and opens the car fields without moving focus.
+- **Signature:** draws, Clear locks Send again, redraw unlocks it. The saved PNG now has a white
+  background (it was transparent, so black ink vanished in dark viewers such as Drive's preview).
+- **Photos:** a landscape-stored JPEG with an EXIF rotation comes out upright (480x640); a text file
+  named `.jpg` is refused politely; compression still previews under the security policy.
+- **Drafts:** never hold the signature; restored within 15 minutes on `?ref=russell` and gone after;
+  a 20-minute-old draft on `?ref=flyer` restores; a send that finished inside the 0.3 s save delay
+  used to bring the draft back, and no longer does.
+- **Security policy:** no violations on load. On the live site the VIN lookup, a backend health
+  check and a real POST all pass through it (the POST carried a wrong secret on purpose, so it was
+  refused and no row was made).
+- **QR as a texted photo:** `qr/russell.png` still decodes after shrinking to 180 px, JPEG quality
+  25, blur and a 12-degree tilt.
+- **Backend:** `node tests/backend.test.js` passes 18/18. Five deliberate breakages of `Code.gs`
+  (no resend check, no link-breaking, trusting any file, no invisible-character stripping, no daily
+  cap) each make at least one test fail.
+- **Not yet:** the backend's new behaviour live. Version 3 is written and tested but not published.
+
 ## How to run the phone rows
 
 1. On the laptop, in the repo: `python -m http.server 8080`
